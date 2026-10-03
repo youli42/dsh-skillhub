@@ -74,11 +74,13 @@ components:
 
 ## Overview
 
-SkillHub is a DSH operator tool. It lists user skills from Agent home and DSH home. Settings edits Global Defaults; the composer panel edits Project or Chat overrides.
+SkillHub is a DSH operator tool. It lists user skills from Agent home and DSH home, and the current workspace's own agent-config roots (`.agents/skills`, `.opencode/skills`, `.claude/skills`). Settings edits Global Defaults; the composer panel edits Project or Chat overrides.
 
 It lives in two seats: a settings page for Global Defaults and a composer chip for Project and Chat. Quiet DSH density. Inherit `--dsw-*`. Do not invent a theme.
 
 The tree is the product. Effective Visibility resolves Chat → Project → Global. Project and Chat store sparse overrides and expose Follow parent; Global owns the base default, including future Skills. Folders are the other axis: home, origin pack, author group, and nested skill each switch every skill inside. When a home entry is a symlink whose real path sits under `<origin>/skills/...`, SkillHub rebuilds that author tree. Expand a folder to switch one child. Off is a switch, not delete.
+
+Project roots are their own home sections, labelled by folder name. `.opencode` and `.claude` carry a `SkillHub only` tag because DSH itself never reads them; `.agents` does not, because DSH reads that root too. Project roots appear only in the composer panel's Project and Chat scopes — a Global read has no folder and shows no project section. One level deep, matching what the model can actually load.
 
 ## Colors
 
@@ -114,7 +116,11 @@ Composer chip and layer segments use pill 18px. The popover and dialogs use 12px
 
 **Gate switch.** `role="switch"` with `aria-checked` true, false, or mixed. Mixed thumb sits in the center. Clicking mixed turns the group On. Disabled when the chosen layer cannot write.
 
-**Tree row.** One switch per row. Project and Chat rows name the effective source and show Follow when that scope owns an override. A folder with only one skill is a skill row: no chevron, no count, no link badge. A folder with two or more skills has a chevron, a folder switch, and a count. Expanding it shows children. The popover hides the home chrome when only one home has skills. Flattened `pstack-*` names cluster under `pstack` in the client until the host catalog already grouped them.
+**Tree row.** One switch per row. Project and Chat rows name the effective source and show Follow when that scope owns an override. A folder with only one skill is a skill row: no chevron, no count, no link badge. A folder with two or more skills has a chevron, a folder switch, and a count. Expanding it shows children. The popover hides the home chrome when only one home has skills — except a project root, which keeps its header even alone, because `.opencode` / `.claude` skills reach the model only through SkillHub and that label is the user's only signal for it. Flattened `pstack-*` names cluster under `pstack` in the client until the host catalog already grouped them.
+
+**MCP declared row.** A project-declared server that is not running shows a `Declared` tag, one line per source with its exact command line, and a warning tag plus a problem list when it cannot start. Its action is `Trust and start` the first time and `Start` afterwards; a running SkillHub-owned server shows `Started by SkillHub` and `Stop`. While it is not running its gate switch reads **Off and disabled**: nothing was spawned, so an On switch would claim a service that does not exist, and writing a visibility value there would mean nothing. Once it runs, the switch reports the stored value exactly as for a live server, and bulk actions skip services that are only declared.
+
+**Trust confirmation.** `RiskConfirmation` from the host primitives, listing every declared command line for that name. The primary action stays disabled until the acknowledgement box is checked. Copy states what runs, not that something risky happens.
 
 **Search.** Visible label Search skills. Filters the tree and keeps ancestor packs of matches. Critical names wrap rather than vanish.
 
@@ -127,9 +133,13 @@ Composer chip and layer segments use pill 18px. The popover and dialogs use 12px
 - Do keep Global editing in Settings and Project/Chat editing in the composer panel.
 - Do show whether the effective state follows Global, comes from Project, or comes from Chat.
 - Do show both collision rows and the word Collision.
+- Do show a project root by its folder name and tag the roots DSH cannot read.
+- Do show the exact command line before a project-declared MCP service starts.
+- Do keep a declared, unstarted service Off and unswitchable instead of showing the stored default.
 - Do not use a native `<select>` for layer or a checkbox forest for the tree.
 - Do not hardcode `#121722`, `#6ea8ff`, or any other invented palette.
 - Do not list Host skills.
+- Do not start a project-declared MCP service without the user's acknowledgement.
 - Do not make the settings page a second product with a different visual system.
 
 ## Agent Execution Rules
@@ -147,7 +157,7 @@ Composer chip and layer segments use pill 18px. The popover and dialogs use 12px
 - Primary audience: A DSH user who already lives in the Web session and settings.
 - Core job to be done: See which installed Skills the current scope will offer, understand where each state comes from, and override or resume following the parent.
 - Success criteria: The panel looks like DSH, not a debug form. Entry ownership, inheritance source, Follow actions, home/pack/group switches, expanded leaf switches, search, empty, error, mixed, and collision are usable by keyboard and pointer.
-- Non-goals: Glance Hub. Managing Host/plugin skills. Install or delete UI. Shipping a new color system. Restarting an adopted Host.
+- Non-goals: Glance Hub. Managing Host/plugin skills. Install or delete UI. Starting a project-declared MCP service without approval. Shipping a new color system. Restarting an adopted Host.
 - Must preserve: Two homes. Chat > Project > Global. Missing overrides inherit. Off leaves files. Collisions both show. Project visibility is user-local.
 - Validation must check against: Native chrome, layer semantics, folder batch toggles including mixed, a child toggled alone, search, empty/error, composer chip open/close, keyboard/focus, reduced-motion still works.
 
@@ -328,3 +338,4 @@ Composer chip and layer segments use pill 18px. The popover and dialogs use 12px
 | 0.6 | 2026-08-21 | Rebuild author trees from symlink real paths | Matt Pocock / pstack installs flatten names; folders live on the target | agent |
 | 0.7 | 2026-08-21 | Host locale zh/en dictionaries | SkillHub chrome follows DSH language | agent |
 | 0.8 | 2026-08-21 | One switch per skill; cluster flattened pstack-* ; quieter badges | User: too many switches, messy tree | agent |
+| 0.9 | 2026-10-02 | Project roots as their own home sections; declared project MCP rows with command lines and a trust confirmation | User: manage the workspace's `.agents` / `.opencode` / `.claude` skills and its `.mcp.json` MCP | agent |

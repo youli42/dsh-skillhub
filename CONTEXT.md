@@ -18,6 +18,22 @@ _Avoid_: public directory, 公共目录, global skills
 The skill directory only DSH treats as its own: `~/.dsh/skills`. Skills here must not be what other agents load.
 _Avoid_: own directory, private skills, 自己的目录
 
+**Project root**:
+A workspace's own agent-config folder that holds Skills: `.agents/skills`, `.opencode/skills`, or `.claude/skills` under the session working directory. One level deep. Only Project and Chat layers see it.
+_Avoid_: repository root, git root, workspace
+
+**Project home**:
+SkillHub's tree section for one Project root, labelled with the folder name (`.agents`). `.opencode` and `.claude` are marked `SkillHub only` because DSH itself never reads them.
+_Avoid_: local skills, 项目技能目录
+
+**MCP declaration**:
+A project file that names MCP servers for another agent: `.mcp.json` (`mcpServers`) or `.opencode/opencode.json` (`mcp`). Declaring is not running.
+_Avoid_: MCP config, mcp.json as a DSH setting
+
+**Trust**:
+The user's recorded approval of one MCP declaration's exact command line, per folder. Editing the declaration invalidates it.
+_Avoid_: auto-approve, remember-all
+
 **Skill**:
 One Agent Skill bundle — a folder containing `SKILL.md`, or a flat `name.md` at a home root.
 _Avoid_: skill project, pack, 一个 Skill 的项目
@@ -61,3 +77,5 @@ _Avoid_: bundled, 插件内部 skill as SkillHub targets
 ## MCP visibility
 
 MCP services are a separate catalog from disk Skills. Their tool-visibility documents live under the SkillHub store and follow Global, Project, Session inheritance. Visibility never means process stop, credential management or removal of prior conversation content. Only an unambiguously identified global tool registration can be fully hidden through the current public tool API. Unsupported scope or ownership is displayed explicitly.
+
+A declared project MCP service is a row before it is a process: SkillHub shows the declaration, its problems, and its exact command line, and starts it only after the user approves that command. Stopping a service keeps the approval; editing the declaration voids it. SkillHub-owned mounts are fully hideable because SkillHub owns their scope.

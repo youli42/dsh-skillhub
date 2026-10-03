@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### 新增
+
+- **项目技能**：按当前工作目录读取 `.agents/skills`、`.opencode/skills`、`.claude/skills`（一层深，与官方 `dsh-skill-filesystem` 的发现规则一致），在输入框面板的「本项目 / 本对话」层开关；设置页不显示。候选 rank 90/91/92（Agent 作用域再 −2），低于官方项目根的 100/200，因此关闭一个项目技能时官方 provider 无法把它重新填回目录；Off 仍以「抢到名字 + invocation=false」表达，绝不删除文件。`.opencode` / `.claude` 只由本插件供给模型，面板标注「仅 SkillHub」。可在配置里用 `projectSkillRoots` 调整或清空。
+- **项目声明的 MCP**：解析 `.mcp.json`（`mcpServers`）与 `.opencode/opencode.json`（`mcp`，`local` / `remote`），在 MCP 页签列出未运行的服务、每个来源的完整命令行，以及无法启动的具体原因（命令不在 PATH、参数路径不存在、名字不合法、`enabled: false` 等）。启动必须经面板「信任并启动」确认，批准记录按目录写入 `$DSH_HOME/skillhub/mcp-trust/<folderHash>.json` 并绑定声明内容的哈希——改过 `command`/`args`/`env`/`url`/`headers` 后需要重新确认。启动以**本对话作用域**挂载 `@deepseek-ai/dsh-mcp-client`（与 ACP 桥接同一做法），`cwd` 为会话目录，随 agent 释放；同一个名字在两个文件里都声明时合并为一行、分别显示各自命令行。SkillHub 自己挂载的服务被视为可完整隐藏，不受「scope-local 工具」限制。
+- 新增 ADR `docs/adr/0009-project-roots-and-declared-mcp.md`（部分取代 ADR 0001），并在 `CONTEXT.md` 补充 Project root / Project home / MCP declaration / Trust 词条。
+- 新增测试：`tests/project-skills.test.mjs`（项目根、一层深、rank、赢家规则）、`tests/project-mcp.test.mjs`（声明解析、路径/命令诊断、信任哈希）、`tests/project-mcp-runtime.test.mjs`（declared 行合并、启动装配与作用域、managed 可隐藏）、`tests/registry-integration.test.mjs`（真实 `@deepseek-ai/dsh-skill` 注册表 + `createScope` 复现 Web 拓扑，验证 rank 88/90 压过官方 100/200/400/500 且 Off 不被回填）、`tests/plugin-entry.test.mjs`（走真实 `Config`/`apply`，验证路由、项目 home 载荷、declared MCP、以及 toggle 写盘后经 invalidate 让注册表把技能判为不可调用）、`tests/client-bundle.test.mjs`（按 Web 模块加载器加载 `lib/client.js`，对照宿主 primitives 的真实导出表，验证两个 slot 注册、i18n 字典、外壳渲染，以及新行用到的 class 确实存在于生成的样式表）、`tests/client-panel.test.mjs`（jsdom + 真实 effect 渲染输入框面板：项目根标签与「仅 SkillHub」标记、declared MCP 行与命令行/问题、无法启动的标记，以及「信任并启动」从勾选到发出 `/mcp/start` 请求体的完整交互）、`tests/mcp-mount.test.mjs`（用真实 `@deepseek-ai/dsh-mcp-client` 连接一个真实的 stdio MCP 子进程，验证经 `start()` 后工具真的注册为 `mcp__probe__ping`、`running/managed` 状态、可隐藏，以及 `stop()` 会注销工具并回收子进程；另外验证宿主自己会拒绝非法 `serverName`）。
+
+### 界面
+
+- 项目声明但**尚未启动**的 MCP 服务，右侧开关显示为**关且不可点**：此前它按全局默认显示成「开」，可进程根本没起来，等于告诉用户这个服务是开的。启动之后开关恢复显示真实的可见性取值；「全部开启 / 全部关闭」也只作用于当前真实存在的服务，不会把状态写进一个还没跑起来的服务里。
+- 输入框弹出面板在「只有一个 home 有技能」时不再收起 home 头部，前提是那一个是项目根：`.opencode` / `.claude` 的技能只由本插件供给模型，这个标签是用户唯一的提示。（只涉及 popover；设置页与纯用户目录的场景行为不变。）
+
+### 修复
+
+- **CRLF 的 SKILL.md 会丢掉最后一个 frontmatter 字段**：截取 frontmatter 时切片停在闭合分隔符的 `\n` 上，于是保留了一个 `\r`，而字段行的 `(.*)$` 无法跨过 `\r`——Windows 上写的技能（最后一个字段常常正是 `description`）会被判成 `invalid-frontmatter`，整条技能不显示。现在按 `\r\n` / `\r` / `\n` 三种换行切行，字段值用可跨 `\r` 的模式并 `trim()`。这个 bug 同时影响用户目录里的技能，不只是项目技能；真机检查时 `D:\SSDWP\UE\Test_DreamShader\.agents\skills` 的 11 个技能全部命中过它。
+
+### 兼容
+
+- 新增 peer `@deepseek-ai/dsh-mcp-client`（范围同其它官方包 `>=0.2.0-rc.1 <0.2.1`），用于按项目声明挂载 MCP 服务。
+- 新增开发依赖 `jsdom`（仅测试用，DOM 级客户端渲染测试；不影响发布产物与运行时）。
+
+### 其它
+
 - 技能开关保存后，通过公开的 Loader/Fiber 生命周期重新挂载官方技能补全客户端，清除其会话目录缓存；不刷新整个页面，不重启 Host，也不修改官方代码。
 - 增加“刷新 / 补全”手动入口；通过 BroadcastChannel 通知其他窗口。刷新失败时区分已保存的开关与尚未更新的补全。
 - 使用 RC2 的真实 Cordis、Loader、输入触发器和官方技能客户端构建产物，验证旧缓存复现、同会话启停、多会话隔离、重复通知合并及 SkillHub 自身热加载的监听清理。
