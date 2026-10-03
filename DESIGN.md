@@ -122,7 +122,7 @@ Composer chip and layer segments use pill 18px. The popover and dialogs use 12px
 
 **Declared scope line.** The tab names the folder whose declarations it is showing (the folder's own name, full path in the title). An approval is recorded per folder and bound to one declaration's content, so this line is what tells the user whether the service they trusted a moment ago is the one on screen, or the same service declared in another workspace.
 
-**Trust confirmation.** `RiskConfirmation` from the host primitives, listing every declared command line for that name. The primary action stays disabled until the acknowledgement box is checked. Copy states what runs, not that something risky happens.
+**Trust confirmation.** `RiskConfirmation` from the host primitives, listing every declared command line for that name. The primary action stays disabled until the acknowledgement box is checked. Copy states what runs, not that something risky happens, and says that confirming remembers the command so it starts by itself the next time a session opens in this project. A service the user stops stays stopped for that session.
 
 **Search.** Visible label Search skills. Filters the tree and keeps ancestor packs of matches. Critical names wrap rather than vanish.
 

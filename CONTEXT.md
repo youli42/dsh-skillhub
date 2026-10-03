@@ -31,8 +31,8 @@ A project file that names MCP servers for another agent: `.mcp.json` (`mcpServer
 _Avoid_: MCP config, mcp.json as a DSH setting
 
 **Trust**:
-The user's recorded approval of one MCP declaration's exact command line, per folder. Editing the declaration invalidates it.
-_Avoid_: auto-approve, remember-all
+The user's recorded approval of one MCP declaration's exact command line, per folder. Editing the declaration invalidates it. An approval also starts that service by itself whenever a session of that folder opens, until the user stops it in that session.
+_Avoid_: auto-approve, remember-all, global trust
 
 **Skill**:
 One Agent Skill bundle — a folder containing `SKILL.md`, or a flat `name.md` at a home root.
@@ -79,3 +79,5 @@ _Avoid_: bundled, 插件内部 skill as SkillHub targets
 MCP services are a separate catalog from disk Skills. Their tool-visibility documents live under the SkillHub store and follow Global, Project, Session inheritance. Visibility never means process stop, credential management or removal of prior conversation content. Only an unambiguously identified global tool registration can be fully hidden through the current public tool API. Unsupported scope or ownership is displayed explicitly.
 
 A declared project MCP service is a row before it is a process: SkillHub shows the declaration, its problems, and its exact command line, and starts it only after the user approves that command. Stopping a service keeps the approval; editing the declaration voids it. SkillHub-owned mounts are fully hideable because SkillHub owns their scope.
+
+An approved service starts on its own when a session of that folder opens: trust means "run this command in this project", so opening the project is the moment it applies. Starting never blocks session creation, a start that fails is reported on the row, and a service the user stopped stays stopped for that session. `autoStartTrustedMcp: false` in the plugin Config keeps trust but starts nothing by itself.
