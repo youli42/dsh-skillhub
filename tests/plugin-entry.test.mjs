@@ -88,6 +88,8 @@ test('the plugin entry serves project Skills and declared MCP through its route'
   const config = plugin.Config({ projectSkillRoots: ['.agents/skills'], projectMcpFiles: ['.mcp.json'] })
   assert.deepEqual(config.projectSkillRoots, ['.agents/skills'])
   assert.equal(config.enabled.get(), true)
+  // Approved project services start with the session unless the profile says no.
+  assert.equal(config.autoStartTrustedMcp, true)
   await ctx.plugin({ name: plugin.name, inject: plugin.inject, apply: plugin.apply }, config)
 
   assert.equal(routes.length, 1)

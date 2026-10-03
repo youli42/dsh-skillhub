@@ -7,6 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { McpHub } from '../lib/types/mcp.js'
 import { installMcpVisibility, liveMcpServers } from '../lib/types/mcp-runtime.js'
+import { approveMcpServer, readProjectMcp } from '../lib/types/project-mcp.js'
 
 /**
  * Mounts the real `@deepseek-ai/dsh-mcp-client` against a real stdio MCP server,
@@ -146,4 +147,44 @@ test('the real mcp-client rejects a config SkillHub would never build', () => {
   const accepted = McpClient.Config({ transport: 'stdio', serverName: 'probe', command: process.execPath, args: ['-e', '0'], cwd: tmpdir(), failOnStartupError: false })
   assert.equal(accepted.serverName, 'probe')
   assert.equal(accepted.failOnStartupError, false)
+})
+
+test('an approved declaration runs by itself when the session opens', async (t) => {
+  const base = await mkdtemp(join(tmpdir(), 'skillhub-autostart-'))
+  const cwd = join(base, 'project')
+  await mkdir(cwd, { recursive: true })
+  const fixture = join(base, 'fixture-server.mjs')
+  await writeFile(fixture, FIXTURE)
+  await writeFile(join(cwd, '.mcp.json'), `${JSON.stringify({
+    mcpServers: {
+      auto: { command: process.execPath, args: [fixture] },
+      later: { command: process.execPath, args: [fixture, '--other'] },
+    },
+  }, null, 2)}\n`)
+
+  const storeDir = join(base, 'store')
+  const declarations = readProjectMcp(cwd).servers
+  const approved = declarations.find(server => server.name === 'auto').variants[0]
+  approveMcpServer(storeDir, cwd, 'auto', approved.source, approved.hash)
+
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+  const tools = recordingTools()
+  ctx.provide('tools', tools)
+  const agent = { id: 'auto-1', session: { id: 'auto-1', header: { cwd } } }
+  agent.ctx = ctx
+  ctx.provide('agents', { list: () => [agent] })
+
+  // Only the approved declaration starts, and nothing was clicked.
+  const runtime = installMcpVisibility(ctx, new McpHub({ storeDir }), () => liveMcpServers(ctx), { storeDir })
+  runtime.attach(agent)
+  assert.ok(
+    await waitFor(() => tools.registered.has('mcp__auto__ping')),
+    `the approved server should start with the session; saw ${[...tools.registered.keys()].join(', ') || 'nothing'}`,
+  )
+  const row = runtime.catalog({ layer: 'session', sessionId: 'auto-1', folder: cwd })
+    .servers.find(server => server.name === 'auto')
+  assert.equal(row.running, true)
+  assert.equal(row.managed, true)
+  assert.equal(tools.registered.size, 1, 'the unapproved declaration must stay down')
 })

@@ -30,12 +30,18 @@ export interface Config {
    * Defaults to `.mcp.json` and `.opencode/opencode.json`.
    */
   projectMcpFiles: string[]
+  /**
+   * Start project-declared MCP services whose exact command was already approved
+   * when a session opens. An unapproved declaration still waits for the user.
+   */
+  autoStartTrustedMcp: boolean
 }
 
 export const Config = z.object({
   enabled: z.boolean().default(true).volatile(),
   projectSkillRoots: z.array(String).default([...DEFAULT_PROJECT_SKILL_ROOTS]),
   projectMcpFiles: z.array(String).default([...DEFAULT_PROJECT_MCP_FILES]),
+  autoStartTrustedMcp: z.boolean().default(true),
 })
 
 function env(name: string): string | undefined {
@@ -81,7 +87,11 @@ export function apply(ctx: Context, config: Config) {
     ctx,
     new McpHub({ storeDir: defaultStoreDir() }),
     undefined,
-    { storeDir: defaultStoreDir(), files: config.projectMcpFiles },
+    {
+      storeDir: defaultStoreDir(),
+      files: config.projectMcpFiles,
+      autoStart: config.autoStartTrustedMcp,
+    },
   )
   const invalidate = () => { control?.invalidate() }
   const connection = ctx.get('connection') as {

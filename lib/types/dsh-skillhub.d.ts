@@ -17,15 +17,22 @@ export interface Config {
      * Defaults to `.mcp.json` and `.opencode/opencode.json`.
      */
     projectMcpFiles: string[];
+    /**
+     * Start project-declared MCP services whose exact command was already approved
+     * when a session opens. An unapproved declaration still waits for the user.
+     */
+    autoStartTrustedMcp: boolean;
 }
 export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     enabled: z<boolean, boolean, "volatile-defined">;
     projectSkillRoots: z<string[], string[], "defined">;
     projectMcpFiles: z<string[], string[], "defined">;
+    autoStartTrustedMcp: z<boolean, boolean, "defined">;
 }>>, Schemastery.ObjectT<NoInfer<{
     enabled: z<boolean, boolean, "volatile-defined">;
     projectSkillRoots: z<string[], string[], "defined">;
     projectMcpFiles: z<string[], string[], "defined">;
+    autoStartTrustedMcp: z<boolean, boolean, "defined">;
 }>>, "plain">;
 export declare function apply(ctx: Context, config: Config): void;
 export declare function attachAgentProvider(owner: Context, hub: SkillHub, payload: unknown): void;

@@ -20,6 +20,12 @@ export interface ProjectMcpOptions {
     readonly files?: readonly string[];
     /** Test seam: read declarations without touching disk. */
     readonly read?: (folder: string, files: readonly string[]) => ProjectMcpRead;
+    /**
+     * Start declarations this folder has already approved as soon as a session
+     * opens. Only an approval recorded for the exact declaration content starts
+     * anything: an untrusted command still waits for the user.
+     */
+    readonly autoStart?: boolean;
 }
 /** Uses public Cordis fiber configuration; only serverName leaves this function. */
 export declare function liveMcpServers(ctx: Context): string[];
@@ -41,7 +47,8 @@ export declare function installMcpVisibility(ctx: Context, hub: McpHub, discover
      *
      * The approval is per exact declaration content: editing `command`, `args`,
      * `env`, `url`, or `headers` in the project file invalidates it and the user
-     * is asked again. Nothing starts without this call.
+     * is asked again. Nothing starts without this call, and once an approval
+     * exists the service starts automatically when that folder's session opens.
      * @param query - layer/session/folder selection.
      * @param server - declared server name.
      * @param source - which declaration file to use when several declare the name.
@@ -54,7 +61,10 @@ export declare function installMcpVisibility(ctx: Context, hub: McpHub, discover
         declaredProblems: readonly string[];
         layer: import("./mcp.ts").McpLayer;
     }>;
-    /** Unmount a server SkillHub started; the approval record stays. */
+    /**
+     * Unmount a server SkillHub started; the approval record stays, and the stop
+     * is remembered so reopening the session does not silently restart it.
+     */
     stop(query: McpCatalogQuery, server: string): Promise<{
         servers: McpServerView[];
         declaredProblems: readonly string[];

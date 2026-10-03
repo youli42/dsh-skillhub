@@ -33,6 +33,12 @@ export interface ProjectMcpOptions {
   readonly files?: readonly string[]
   /** Test seam: read declarations without touching disk. */
   readonly read?: (folder: string, files: readonly string[]) => ProjectMcpRead
+  /**
+   * Start declarations this folder has already approved as soon as a session
+   * opens. Only an approval recorded for the exact declaration content starts
+   * anything: an untrusted command still waits for the user.
+   */
+  readonly autoStart?: boolean
 }
 
 const EMPTY_READ: ProjectMcpRead = { servers: [], problems: [] }
@@ -105,6 +111,17 @@ export function installMcpVisibility(
   if (!tools) throw new Error('SkillHub MCP requires tools service')
   const agents = new Map<Agent, { lift: () => void; guard: () => void; signature: string; dispose: () => void }>()
   const mounted = new Map<string, Mounted>()
+  /**
+   * Sessions whose approved declarations have already been started. One pass per
+   * session: a declaration added while the session is open is the panel's job,
+   * not something to keep re-scanning for on every event.
+   */
+  const autoStarted = new Set<string>()
+  /** Servers the user stopped, so entering again does not silently restart them. */
+  const userStopped = new Set<string>()
+  /** Servers whose automatic start already failed, to keep one log line each. */
+  const autoStartFailed = new Set<string>()
+  const autoStartEnabled = project !== undefined && project.autoStart !== false
   let refreshing = false
   let disposed = false
   const names = () => tools.schemas().map(t => t.name)
@@ -172,10 +189,46 @@ export function installMcpVisibility(
   /** Unmount everything this session started; the approval record stays. */
   const releaseAgent = async (sessionId: string | undefined): Promise<void> => {
     if (sessionId === undefined || sessionId === '') return
+    autoStarted.delete(sessionId)
     for (const [key, entry] of [...mounted.entries()]) {
       if (!key.startsWith(`${sessionId}\u0000`)) continue
       mounted.delete(key)
+      userStopped.delete(key)
+      autoStartFailed.delete(key)
       await entry.dispose()
+    }
+  }
+  /**
+   * Start the approved declarations of this session's folder.
+   *
+   * Runs once per session, in the background. `agent/created` is a serial event
+   * whose listeners are awaited before creation resolves while queued input
+   * waits, so this never blocks and never throws: an MCP handshake can take
+   * seconds and a broken declaration must not hold up the session.
+   * @param agent - the session's agent, whose folder must already be known.
+   */
+  const autoStartApproved = (agent: Agent): void => {
+    if (!autoStartEnabled || disposed) return
+    const sessionId = id(agent)
+    if (sessionId === undefined || sessionId === '' || autoStarted.has(sessionId)) return
+    const folder = identity(agent).folder
+    if (folder === undefined || folder === '') return
+    autoStarted.add(sessionId)
+    const declared = readDeclared(folder).servers
+    const trust = trustOf(folder)
+    for (const entry of declared) {
+      const key = mountKey(sessionId, entry.name)
+      if (mounted.has(key) || userStopped.has(key) || autoStartFailed.has(key)) continue
+      const variant = entry.variants.find(candidate =>
+        !candidate.disabled && candidate.problems.length === 0 && isApproved(trust, candidate, entry.name))
+      if (variant === undefined) continue
+      void mount(agent, entry.name, folder, variant).then(() => { refresh() }).catch((error: unknown) => {
+        autoStartFailed.add(key)
+        const message = `[dsh-skillhub] could not auto-start MCP service "${entry.name}": ${String(error)}`
+        const logger = (agent.ctx as unknown as { logger?: { warn?: (text: string) => void } }).logger
+        if (typeof logger?.warn === 'function') logger.warn(message)
+        else console.warn(message)
+      })
     }
   }
   const attach = (agent: Agent) => {
@@ -199,6 +252,7 @@ export function installMcpVisibility(
       void releaseAgent(id(agent))
     }, 'skillhub MCP agent cleanup')
     refresh()
+    autoStartApproved(agent)
   }
   const mount = async (agent: Agent, server: string, folder: string, variant: ProjectMcpVariant): Promise<void> => {
     const sessionId = id(agent)
@@ -225,17 +279,28 @@ export function installMcpVisibility(
   const on = ctx.on.bind(ctx) as (event: string, fn: (...args: any[]) => void) => () => void
   const offChange = on('tools/change', refresh)
   const offCreated = on('agent/created', ({ agent }: { agent: Agent }) => attach(agent))
+  // A session whose folder was not readable yet at creation gets another chance
+  // as soon as it starts doing work. `agent/status` is an emit, so a listener
+  // here cannot veto or delay a turn.
+  const offStatus = on('agent/status', ({ agent }: { agent: Agent }) => autoStartApproved(agent))
   const registry = ctx.get('agents') as { list(): Agent[] } | undefined
   for (const agent of registry?.list() ?? []) attach(agent)
   ctx.effect(() => () => {
     disposed = true
-    offChange(); offCreated()
+    offChange(); offCreated(); offStatus()
     for (const state of agents.values()) { state.dispose(); state.lift(); state.guard() }
     agents.clear()
+    autoStarted.clear()
+    userStopped.clear()
+    autoStartFailed.clear()
     for (const entry of mounted.values()) void entry.dispose()
     mounted.clear()
   }, 'skillhub MCP visibility')
   const catalog = (query: McpCatalogQuery = {}) => {
+    // A read is also the retry point for a session whose folder only became
+    // known after creation; the guard makes this a set lookup afterwards.
+    const sessionAgent = agentFor(query.sessionId)
+    if (sessionAgent !== undefined) autoStartApproved(sessionAgent)
     const servers = discover()
     const result = hub.catalog(query, names(), servers)
     const folder = project === undefined ? undefined : folderFor(query)
@@ -305,7 +370,8 @@ export function installMcpVisibility(
      *
      * The approval is per exact declaration content: editing `command`, `args`,
      * `env`, `url`, or `headers` in the project file invalidates it and the user
-     * is asked again. Nothing starts without this call.
+     * is asked again. Nothing starts without this call, and once an approval
+     * exists the service starts automatically when that folder's session opens.
      * @param query - layer/session/folder selection.
      * @param server - declared server name.
      * @param source - which declaration file to use when several declare the name.
@@ -327,13 +393,19 @@ export function installMcpVisibility(
       const variant = source === undefined ? usable[0] : usable.find(entry => entry.source === source)
       if (variant === undefined) throw new Error(`No startable declaration for "${server}" from "${source ?? ''}"`)
       approveMcpServer(project.storeDir, folder, server, variant.source, variant.hash)
+      userStopped.delete(mountKey(query.sessionId, server))
+      autoStartFailed.delete(mountKey(query.sessionId, server))
       await mount(agent, server, folder, variant)
       refresh()
       return { ...catalog(query), started: server, variant: renderVariant(variant) }
     },
-    /** Unmount a server SkillHub started; the approval record stays. */
+    /**
+     * Unmount a server SkillHub started; the approval record stays, and the stop
+     * is remembered so reopening the session does not silently restart it.
+     */
     async stop(query: McpCatalogQuery, server: string) {
       const key = mountKey(query.sessionId, server)
+      userStopped.add(key)
       const entry = mounted.get(key)
       if (entry !== undefined) {
         mounted.delete(key)

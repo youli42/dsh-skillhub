@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { McpHub } from '../lib/types/mcp.js'
 import { installMcpVisibility } from '../lib/types/mcp-runtime.js'
-import { readMcpTrust } from '../lib/types/project-mcp.js'
+import { approveMcpServer, readMcpTrust, readProjectMcp } from '../lib/types/project-mcp.js'
 
 /**
  * These tests stub the Cordis context on purpose: the harness service that owns
@@ -171,4 +171,45 @@ test('a SkillHub-owned mount is hideable even though its tools are scope-local',
   assert.equal(after.servers.find(server => server.name === 'mine').supported, true)
   // Hiding a foreign scope-local server is still refused.
   assert.throws(() => runtime.mutate({ layer: 'global' }, 'foreign', false), /Cannot fully hide/)
+})
+
+test('an approved declaration starts when the session opens, and only then', async () => {
+  const cwd = await project('autostart', {
+    approved: { command: process.execPath, args: ['-e', '0'] },
+    untrusted: { command: process.execPath, args: ['-e', '1'] },
+  })
+  const storeDir = join(cwd, 'store')
+  const declarations = readProjectMcp(cwd).servers
+  const approvedVariant = declarations.find(server => server.name === 'approved').variants[0]
+  approveMcpServer(storeDir, cwd, 'approved', approvedVariant.source, approvedVariant.hash)
+
+  const run = (autoStart) => {
+    const hub = new McpHub({ storeDir })
+    const tools = stubTools()
+    const agent = stubAgent(cwd, tools)
+    const runtime = installMcpVisibility(stubContext({ agents: [agent], tools }), hub, () => [], { storeDir, autoStart })
+    runtime.attach(agent)
+    return { agent, runtime }
+  }
+
+  // Opening a session starts what this folder already approved — without a click.
+  const on = run(true)
+  await new Promise(resolve => setTimeout(resolve, 20))
+  assert.deepEqual(on.agent.mounts.map(mount => mount.config.serverName), ['approved'])
+  assert.equal(on.runtime.catalog({ layer: 'session', sessionId: 's1', folder: cwd })
+    .servers.find(server => server.name === 'approved').managed, true)
+  // The declaration nobody approved is left alone.
+  assert.equal(on.agent.mounts.some(mount => mount.config.serverName === 'untrusted'), false)
+
+  // Stopping is remembered: the same session does not silently restart it.
+  await on.runtime.stop({ layer: 'session', sessionId: 's1', folder: cwd }, 'approved')
+  await new Promise(resolve => setTimeout(resolve, 20))
+  assert.deepEqual(on.agent.mounts.map(mount => mount.config.serverName), ['approved'])
+  assert.equal(on.runtime.catalog({ layer: 'session', sessionId: 's1', folder: cwd })
+    .servers.find(server => server.name === 'approved').running, false)
+
+  // The profile can turn automatic starting off entirely.
+  const off = run(false)
+  await new Promise(resolve => setTimeout(resolve, 20))
+  assert.deepEqual(off.agent.mounts, [])
 })
