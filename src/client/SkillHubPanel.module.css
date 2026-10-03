@@ -634,6 +634,19 @@
   line-height: 17px;
 }
 
+/* The folder whose declarations this tab is showing: the approval is recorded
+ * per folder, so which folder is on screen decides what "approved" means. The
+ * full path is the row's title. */
+.scope {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .menu {
     animation: none;

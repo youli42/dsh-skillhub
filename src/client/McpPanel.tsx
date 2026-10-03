@@ -34,6 +34,11 @@ type Server = {
 }
 type Catalog = { servers: Server[]; declaredProblems?: string[] }
 export interface McpBulkActions { allOn: () => void; allOff: () => void; disabled: boolean }
+
+/** The folder's own name, which is what tells one workspace from another here. */
+function folderName(folder: string): string {
+  return folder.split(/[\\/]/).filter(part => part !== '').pop() ?? folder
+}
 export interface McpPanelProps {
   surface: SkillHubSurface
   layer: LayerName
@@ -193,6 +198,14 @@ export function McpPanel(props: McpPanelProps) {
       {catalog !== undefined && (catalog.declaredProblems?.length ?? 0) > 0 ? <p className={css.warn} role="status">
         {t('mcp.declaredProblems')} {(catalog.declaredProblems ?? []).join(' · ')}
       </p> : null}
+      {/* Project declarations belong to one folder, and the approval is recorded
+          per folder. Naming the folder here is what tells the user whether the
+          service they trusted a moment ago is the one they are looking at now,
+          or the same service declared in another workspace. */}
+      {catalog !== undefined && folder !== undefined && folder !== ''
+        && catalog.servers.some(server => server.declared) ? <p className={css.scope} title={folder}>
+        {t('mcp.scope', { name: folderName(folder) })}
+      </p> : null}
       {catalog === undefined && error === undefined ? <div className={css.skeleton} aria-label={t('loading')}>
         <div className={css.skel} /><div className={css.skel} /><div className={css.skel} />
       </div> : null}
@@ -213,6 +226,7 @@ export function McpPanel(props: McpPanelProps) {
                 <span className={css.nameText}>{server.name}</span>
                 <Tag tone="quiet">{t('mcp.tools', { n: server.tools })}</Tag>
                 {server.declared && !server.running ? <Tag tone="quiet">{t('mcp.declared')}</Tag> : null}
+                {server.declared && variants.some(variant => variant.approved) ? <Tag tone="quiet">{t('mcp.approved')}</Tag> : null}
                 {server.managed && server.running ? <Tag tone="quiet">{t('mcp.managed')}</Tag> : null}
                 {server.declared && !startable ? <Tag tone="warning">{t('mcp.notStartable')}</Tag> : null}
                 {!server.supported ? <Tag tone="warning">{t('mcp.unsupported')}</Tag> : null}

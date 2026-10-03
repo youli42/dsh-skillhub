@@ -183,6 +183,16 @@ test('the composer popover renders project Skills, a declared MCP service, and t
         ],
         problems: ['mcp-json: command not found on PATH: ue-mcp-missing'],
       },
+      // A service whose command the user already approved in this folder: after a
+      // restart it must come back approved, offering Start rather than the trust
+      // dialog again.
+      {
+        name: 'preapproved', tools: 0, gate: 'off', source: 'global', running: false, declared: true, managed: false, startRequired: true, supported: true,
+        variants: [
+          { source: 'opencode-json', transport: 'stdio', command: 'npx ue-mcp ./Project_Wall.uproject', approved: true, startable: true, problems: [] },
+        ],
+        problems: [],
+      },
     ],
     layer,
     declaredProblems: [],
@@ -269,14 +279,27 @@ test('the composer popover renders project Skills, a declared MCP service, and t
   assert.match(mcpBody.textContent, /no-runner/)
   assert.match(mcpBody.textContent, /Not startable/)
   assert.match(mcpBody.textContent, /command not found on PATH/)
+  // The folder whose declarations are on screen: the approval is recorded per
+  // folder, so this line is what says whether a remembered trust applies here.
+  const scope = mcpBody.querySelector('p[title]')
+  assert.ok(scope !== null, 'the declared scope line should name the folder')
+  assert.match(scope.textContent, /dream-project/)
+  assert.equal(scope.getAttribute('title'), CWD)
+
   const inert = [...mcpBody.querySelectorAll('button')].filter(button => button.textContent === 'Trust and start')
   assert.equal(inert.length, 2)
   assert.equal(inert.some(button => button.disabled), true)
+  // A service approved in this folder comes back approved: tagged as such, and
+  // offering Start instead of the trust dialog.
+  assert.match(mcpBody.textContent, /Approved/)
+  const preapproved = [...mcpBody.querySelectorAll('button')].filter(button => button.textContent === 'Start')
+  assert.equal(preapproved.length, 1)
+  assert.equal(preapproved[0].disabled, false)
   // Nothing here is running, so every row must read Off and offer no switch: a
   // switch that says "on" for a service that was never started is the misleading
   // state this rule removes.
   const switches = [...mcpBody.querySelectorAll('[role="switch"]')]
-  assert.equal(switches.length, 2)
+  assert.equal(switches.length, 3)
   for (const control of switches) {
     assert.equal(control.getAttribute('aria-checked'), 'false')
     assert.equal(control.disabled, true)
