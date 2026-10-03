@@ -59,13 +59,21 @@ async function loadMcpClient(): Promise<unknown> {
   return await clientModule
 }
 
-/** Uses public Cordis fiber configuration; only serverName leaves this function. */
+/**
+ * Uses public Cordis fiber configuration; only serverName leaves this function.
+ *
+ * Only an ACTIVE fiber counts. A rejected activation keeps its fiber — and with
+ * it the `serverName` in its config — in the registry, so counting those would
+ * report a server that never connected as running, which is exactly the
+ * misleading state a failed start must not produce. ACTIVE is Cordis's public
+ * FiberState value; the enum is compile-time only.
+ */
 export function liveMcpServers(ctx: Context): string[] {
   const names = new Set<string>()
   for (const runtime of ctx.registry.values()) {
     if (runtime.name !== 'mcp-client') continue
     for (const fiber of runtime.fibers) {
-      if (fiber.uid === null) continue
+      if (fiber.uid === null || fiber.state !== 2) continue
       const name: unknown = fiber.config?.serverName
       if (typeof name === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(name)) names.add(name)
     }
@@ -101,6 +109,26 @@ function declaredProblems(entry: { variants: readonly ProjectMcpVariant[] }): st
   return problems
 }
 
+/**
+ * One readable sentence for a failed activation.
+ *
+ * The MCP client rejects with a generic message and attaches the real failure as
+ * `cause` (a spawn error, a refused connection, a handshake timeout), so the
+ * cause is what the user needs. Depth is bounded because a cause chain may loop.
+ * @param error - whatever the mount threw.
+ * @returns a single line suitable for a panel row.
+ */
+function describeFailure(error: unknown): string {
+  const parts: string[] = []
+  let current: unknown = error
+  for (let depth = 0; depth < 4 && current !== undefined && current !== null; depth += 1) {
+    const message = current instanceof Error ? current.message : String(current)
+    if (message !== '' && !parts.includes(message)) parts.push(message)
+    current = current instanceof Error ? (current as { cause?: unknown }).cause : undefined
+  }
+  return parts.length === 0 ? 'unknown error' : parts.join(' — ')
+}
+
 export function installMcpVisibility(
   ctx: Context,
   hub: McpHub,
@@ -119,8 +147,13 @@ export function installMcpVisibility(
   const autoStarted = new Set<string>()
   /** Servers the user stopped, so entering again does not silently restart them. */
   const userStopped = new Set<string>()
-  /** Servers whose automatic start already failed, to keep one log line each. */
-  const autoStartFailed = new Set<string>()
+  /**
+   * Why a start failed, per session and server. A mounted fiber means a connected
+   * server (`failOnStartupError`), so this is the only way a row can explain a
+   * service that was approved but never came up — and it also stops the
+   * automatic start from retrying it on every event in the same session.
+   */
+  const startFailures = new Map<string, string>()
   const autoStartEnabled = project !== undefined && project.autoStart !== false
   let refreshing = false
   let disposed = false
@@ -190,11 +223,13 @@ export function installMcpVisibility(
   const releaseAgent = async (sessionId: string | undefined): Promise<void> => {
     if (sessionId === undefined || sessionId === '') return
     autoStarted.delete(sessionId)
+    for (const key of [...startFailures.keys()]) {
+      if (key.startsWith(`${sessionId}\u0000`)) startFailures.delete(key)
+    }
     for (const [key, entry] of [...mounted.entries()]) {
       if (!key.startsWith(`${sessionId}\u0000`)) continue
       mounted.delete(key)
       userStopped.delete(key)
-      autoStartFailed.delete(key)
       await entry.dispose()
     }
   }
@@ -204,7 +239,8 @@ export function installMcpVisibility(
    * Runs once per session, in the background. `agent/created` is a serial event
    * whose listeners are awaited before creation resolves while queued input
    * waits, so this never blocks and never throws: an MCP handshake can take
-   * seconds and a broken declaration must not hold up the session.
+   * seconds and a broken declaration must not hold up the session. What went
+   * wrong is recorded instead, and the row shows it.
    * @param agent - the session's agent, whose folder must already be known.
    */
   const autoStartApproved = (agent: Agent): void => {
@@ -218,13 +254,14 @@ export function installMcpVisibility(
     const trust = trustOf(folder)
     for (const entry of declared) {
       const key = mountKey(sessionId, entry.name)
-      if (mounted.has(key) || userStopped.has(key) || autoStartFailed.has(key)) continue
+      if (mounted.has(key) || userStopped.has(key) || startFailures.has(key)) continue
       const variant = entry.variants.find(candidate =>
         !candidate.disabled && candidate.problems.length === 0 && isApproved(trust, candidate, entry.name))
       if (variant === undefined) continue
       void mount(agent, entry.name, folder, variant).then(() => { refresh() }).catch((error: unknown) => {
-        autoStartFailed.add(key)
-        const message = `[dsh-skillhub] could not auto-start MCP service "${entry.name}": ${String(error)}`
+        const detail = describeFailure(error)
+        startFailures.set(key, `Start failed: ${detail}`)
+        const message = `[dsh-skillhub] could not auto-start MCP service "${entry.name}": ${detail}`
         const logger = (agent.ctx as unknown as { logger?: { warn?: (text: string) => void } }).logger
         if (typeof logger?.warn === 'function') logger.warn(message)
         else console.warn(message)
@@ -267,7 +304,16 @@ export function installMcpVisibility(
     const plugin = typeof namespace.apply === 'function' ? namespace : (namespace.default ?? namespace)
     const plug = agent.ctx.plugin.bind(agent.ctx) as unknown as
       (value: unknown, config: unknown) => Promise<{ dispose: () => unknown }>
-    const fiber = await plug(plugin, mcpClientConfig(server, variant, folder))
+    let fiber: { dispose: () => unknown }
+    try {
+      fiber = await plug(plugin, mcpClientConfig(server, variant, folder))
+    } catch (error) {
+      // Activation only resolves once the server is connected and its tools are
+      // published, so a rejection here means nothing was mounted. The wrapper
+      // keeps the readable prefix while `describeFailure` carries the cause.
+      throw new Error(`Cannot start "${server}": ${describeFailure(error)}`)
+    }
+    startFailures.delete(key)
     mounted.set(key, {
       server,
       folder,
@@ -292,7 +338,7 @@ export function installMcpVisibility(
     agents.clear()
     autoStarted.clear()
     userStopped.clear()
-    autoStartFailed.clear()
+    startFailures.clear()
     for (const entry of mounted.values()) void entry.dispose()
     mounted.clear()
   }, 'skillhub MCP visibility')
@@ -307,21 +353,35 @@ export function installMcpVisibility(
     const declared = folder === undefined || folder === '' ? EMPTY_READ : readDeclared(folder)
     const trust = folder === undefined || folder === '' ? EMPTY_TRUST : trustOf(folder)
     const declaredByName = new Map(declared.servers.map(entry => [entry.name, entry]))
+    /** Declaration problems plus the last start failure, as one warn list. */
+    const problemsFor = (name: string, entry: { variants: readonly ProjectMcpVariant[] }): string[] => {
+      const failure = startFailures.get(mountKey(query.sessionId, name))
+      return failure === undefined ? declaredProblems(entry) : [...declaredProblems(entry), failure]
+    }
+    const failedFor = (name: string): boolean => startFailures.has(mountKey(query.sessionId, name))
     const views: McpServerView[] = result.servers.map(row => {
       const entry = declaredByName.get(row.name)
       const managed = mounted.has(mountKey(query.sessionId, row.name))
+      // A live fiber is a connected server, so nothing failed here any more.
+      if (managed) startFailures.delete(mountKey(query.sessionId, row.name))
       return {
         ...row,
         running: true,
         declared: entry !== undefined,
         managed,
+        failed: failedFor(row.name),
         supported: managed || !problematic(row.name, servers, query.sessionId),
-        ...entry !== undefined ? { variants: variantViews(entry, trust), problems: declaredProblems(entry) } : {},
+        ...entry !== undefined ? { variants: variantViews(entry, trust), problems: problemsFor(row.name, entry) } : {},
       }
     })
     for (const entry of declared.servers) {
       if (result.servers.some(row => row.name === entry.name)) continue
       const state = hub.effectiveGate(entry.name, query.sessionId, folder)
+      // The mount itself is the authority on whether this service runs: the
+      // discovery list is a scan that can lag a fiber that was just started, and
+      // a running service must offer Stop and its real visibility, not the
+      // "not started yet" shape.
+      const managed = mounted.has(mountKey(query.sessionId, entry.name))
       views.push({
         name: entry.name,
         tools: 0,
@@ -330,15 +390,16 @@ export function installMcpVisibility(
         // been spawned, which is exactly the wrong signal before the user
         // approves the command. The stored value keeps its job once the service
         // runs; `startRequired` keeps the panel from offering a switch for it.
-        gate: 'off',
+        gate: managed ? state.gate : 'off',
         source: state.source,
-        running: false,
+        running: managed,
         declared: true,
-        managed: mounted.has(mountKey(query.sessionId, entry.name)),
-        startRequired: true,
+        managed,
+        startRequired: !managed,
+        failed: failedFor(entry.name),
         supported: true,
         variants: variantViews(entry, trust),
-        problems: declaredProblems(entry),
+        problems: problemsFor(entry.name, entry),
       })
     }
     views.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
@@ -393,9 +454,18 @@ export function installMcpVisibility(
       const variant = source === undefined ? usable[0] : usable.find(entry => entry.source === source)
       if (variant === undefined) throw new Error(`No startable declaration for "${server}" from "${source ?? ''}"`)
       approveMcpServer(project.storeDir, folder, server, variant.source, variant.hash)
-      userStopped.delete(mountKey(query.sessionId, server))
-      autoStartFailed.delete(mountKey(query.sessionId, server))
-      await mount(agent, server, folder, variant)
+      const key = mountKey(query.sessionId, server)
+      userStopped.delete(key)
+      try {
+        await mount(agent, server, folder, variant)
+      } catch (error) {
+        // The approval stays: trust is a statement about the command, not about
+        // whether it happens to run right now. The row explains the failure, and
+        // the next 启动 retries from there.
+        startFailures.set(key, `Start failed: ${describeFailure(error)}`)
+        refresh()
+        throw error
+      }
       refresh()
       return { ...catalog(query), started: server, variant: renderVariant(variant) }
     },

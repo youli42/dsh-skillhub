@@ -29,6 +29,7 @@ type Server = {
   declared?: boolean
   managed?: boolean
   startRequired?: boolean
+  failed?: boolean
   variants?: Variant[]
   problems?: string[]
 }
@@ -226,6 +227,7 @@ export function McpPanel(props: McpPanelProps) {
                 <span className={css.nameText}>{server.name}</span>
                 <Tag tone="quiet">{t('mcp.tools', { n: server.tools })}</Tag>
                 {server.declared && !server.running ? <Tag tone="quiet">{t('mcp.declared')}</Tag> : null}
+                {server.failed ? <Tag tone="warning">{t('mcp.failed')}</Tag> : null}
                 {server.declared && variants.some(variant => variant.approved) ? <Tag tone="quiet">{t('mcp.approved')}</Tag> : null}
                 {server.managed && server.running ? <Tag tone="quiet">{t('mcp.managed')}</Tag> : null}
                 {server.declared && !startable ? <Tag tone="warning">{t('mcp.notStartable')}</Tag> : null}

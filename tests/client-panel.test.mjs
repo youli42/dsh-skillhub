@@ -193,6 +193,15 @@ test('the composer popover renders project Skills, a declared MCP service, and t
         ],
         problems: [],
       },
+      // An approved service whose start failed: the row must say so and carry the
+      // reason instead of looking like a running server with no tools.
+      {
+        name: 'dead', tools: 0, gate: 'off', source: 'global', running: false, declared: true, managed: false, startRequired: true, failed: true, supported: true,
+        variants: [
+          { source: 'mcp-json', transport: 'stdio', command: 'npx ue-mcp ./gone.uproject', approved: true, startable: true, problems: [] },
+        ],
+        problems: ['Start failed: mcp-client(dead): initial connection or tool synchronization failed — spawn npx ENOENT'],
+      },
     ],
     layer,
     declaredProblems: [],
@@ -290,16 +299,19 @@ test('the composer popover renders project Skills, a declared MCP service, and t
   assert.equal(inert.length, 2)
   assert.equal(inert.some(button => button.disabled), true)
   // A service approved in this folder comes back approved: tagged as such, and
-  // offering Start instead of the trust dialog.
+  // offering Start instead of the trust dialog. The failed one offers the same
+  // retry and says why it failed last time.
   assert.match(mcpBody.textContent, /Approved/)
-  const preapproved = [...mcpBody.querySelectorAll('button')].filter(button => button.textContent === 'Start')
-  assert.equal(preapproved.length, 1)
-  assert.equal(preapproved[0].disabled, false)
+  assert.match(mcpBody.textContent, /Start failed/)
+  assert.match(mcpBody.textContent, /ENOENT/)
+  const retries = [...mcpBody.querySelectorAll('button')].filter(button => button.textContent === 'Start')
+  assert.equal(retries.length, 2)
+  assert.equal(retries.every(button => button.disabled === false), true)
   // Nothing here is running, so every row must read Off and offer no switch: a
   // switch that says "on" for a service that was never started is the misleading
   // state this rule removes.
   const switches = [...mcpBody.querySelectorAll('[role="switch"]')]
-  assert.equal(switches.length, 3)
+  assert.equal(switches.length, 4)
   for (const control of switches) {
     assert.equal(control.getAttribute('aria-checked'), 'false')
     assert.equal(control.disabled, true)

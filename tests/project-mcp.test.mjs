@@ -123,7 +123,9 @@ test('the client config carries the declared name and the project working direct
   assert.equal(config.command, process.execPath)
   assert.deepEqual(config.args, ['./Test_DreamShader.uproject'])
   assert.equal(config.cwd, cwd)
-  assert.equal(config.failOnStartupError, false)
+  // SkillHub owns this mount, so activation must fail loudly rather than leave a
+  // "running" server that never connected.
+  assert.equal(config.failOnStartupError, true)
 })
 
 test('resolveExecutable finds an absolute launcher and reports a missing command', () => {

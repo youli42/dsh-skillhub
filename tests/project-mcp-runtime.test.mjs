@@ -38,14 +38,24 @@ function stubContext({ agents = [], tools = stubTools() } = {}) {
 function stubAgent(folder, tools, sessionId = 's1') {
   const mounts = []
   const disposed = []
+  const failing = new Set()
   const agent = {
     id: sessionId,
     session: { id: sessionId, header: { cwd: folder } },
     mounts,
+    failing,
     ctx: {
       get: (name) => (name === 'tools' ? tools : undefined),
       effect: () => () => {},
       plugin: async (plugin, config) => {
+        if (failing.has(config.serverName)) {
+          // The shape the real client rejects with: a generic message plus the
+          // cause that carries the reason the user needs.
+          throw new Error(
+            `mcp-client(${config.serverName}): initial connection or tool synchronization failed`,
+            { cause: new Error('spawn npx ENOENT') },
+          )
+        }
         mounts.push({ plugin, config })
         return { dispose: async () => { disposed.push(config.serverName) } }
       },
@@ -134,7 +144,9 @@ test('start refuses what cannot run and mounts what the user approved', async ()
   assert.equal(agent.mounts[0].config.command, process.execPath)
   assert.deepEqual(agent.mounts[0].config.args, ['-e', '0'])
   assert.equal(agent.mounts[0].config.cwd, cwd)
-  assert.equal(agent.mounts[0].config.failOnStartupError, false)
+  // SkillHub owns this mount, so activation must fail loudly when the server
+  // never connected; otherwise the row would claim a server that is not serving.
+  assert.equal(agent.mounts[0].config.failOnStartupError, true)
   // The approval is bound to this exact declaration.
   assert.equal(readMcpTrust(storeDir, cwd).servers['fixture'].hash.length, 32)
   assert.equal(started.servers.find(server => server.name === 'fixture').managed, true)
@@ -171,6 +183,41 @@ test('a SkillHub-owned mount is hideable even though its tools are scope-local',
   assert.equal(after.servers.find(server => server.name === 'mine').supported, true)
   // Hiding a foreign scope-local server is still refused.
   assert.throws(() => runtime.mutate({ layer: 'global' }, 'foreign', false), /Cannot fully hide/)
+})
+
+test('a failed start is reported on the row instead of a healthy-looking 0 tools', async () => {
+  const cwd = await project('failure', {
+    flaky: { command: process.execPath, args: ['-e', '0'] },
+  })
+  const storeDir = join(cwd, 'store')
+  const hub = new McpHub({ storeDir })
+  const tools = stubTools()
+  const agent = stubAgent(cwd, tools)
+  const runtime = installMcpVisibility(stubContext({ agents: [agent], tools }), hub, () => [], { storeDir })
+  runtime.attach(agent)
+  const query = { layer: 'session', sessionId: 's1', folder: cwd }
+
+  agent.failing.add('flaky')
+  await assert.rejects(() => runtime.start(query, 'flaky'), /Cannot start "flaky".*mcp-client\(flaky\).*ENOENT/)
+
+  // Nothing is mounted, so the row reads as not running — with the reason.
+  const failed = runtime.catalog(query).servers.find(server => server.name === 'flaky')
+  assert.equal(failed.running, false)
+  assert.equal(failed.managed, false)
+  assert.equal(failed.startRequired, true)
+  assert.ok(failed.problems.some(problem => problem.startsWith('Start failed:') && problem.includes('ENOENT')),
+    `the row should carry the failure; saw ${JSON.stringify(failed.problems)}`)
+  // It really failed, rather than pretending to run with no tools.
+  assert.equal(tools.schemas().some(tool => tool.name.startsWith('mcp__flaky__')), false)
+
+  // The approval survived the failure, so trying again is one click — and a
+  // success clears the note.
+  agent.failing.delete('flaky')
+  await runtime.start(query, 'flaky')
+  const recovered = runtime.catalog(query).servers.find(server => server.name === 'flaky')
+  assert.equal(recovered.running, true)
+  assert.equal(recovered.managed, true)
+  assert.deepEqual(recovered.problems, [])
 })
 
 test('an approved declaration starts when the session opens, and only then', async () => {

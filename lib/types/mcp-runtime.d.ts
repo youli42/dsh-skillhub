@@ -27,7 +27,15 @@ export interface ProjectMcpOptions {
      */
     readonly autoStart?: boolean;
 }
-/** Uses public Cordis fiber configuration; only serverName leaves this function. */
+/**
+ * Uses public Cordis fiber configuration; only serverName leaves this function.
+ *
+ * Only an ACTIVE fiber counts. A rejected activation keeps its fiber — and with
+ * it the `serverName` in its config — in the registry, so counting those would
+ * report a server that never connected as running, which is exactly the
+ * misleading state a failed start must not produce. ACTIVE is Cordis's public
+ * FiberState value; the enum is compile-time only.
+ */
 export declare function liveMcpServers(ctx: Context): string[];
 export declare function installMcpVisibility(ctx: Context, hub: McpHub, discover?: () => string[], project?: ProjectMcpOptions): {
     attach: (agent: Agent) => void;

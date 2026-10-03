@@ -41,6 +41,12 @@ export interface McpServerView {
      * offers no switch.
      */
     readonly startRequired?: boolean;
+    /**
+     * The last start of this session failed: the service was approved but never
+     * connected. Its reason is in `problems`, and the row marks it so a failure is
+     * scannable rather than hidden among declaration warnings.
+     */
+    readonly failed?: boolean;
     /** Hiding it through the public tool API removes every one of its tools. */
     readonly supported?: boolean;
     /** Declared ways to start it, in priority order. */

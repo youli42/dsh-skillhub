@@ -149,6 +149,45 @@ test('the real mcp-client rejects a config SkillHub would never build', () => {
   assert.equal(accepted.failOnStartupError, false)
 })
 
+test('a declared service that never connects is reported instead of looking started', async (t) => {
+  const base = await mkdtemp(join(tmpdir(), 'skillhub-dead-'))
+  const cwd = join(base, 'project')
+  await mkdir(cwd, { recursive: true })
+  // A command that starts and exits at once: negotiation cannot succeed.
+  await writeFile(join(cwd, '.mcp.json'), `${JSON.stringify({
+    mcpServers: { dead: { command: process.execPath, args: ['-e', 'process.exit(1)'] } },
+  }, null, 2)}\n`)
+
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+  const tools = recordingTools()
+  ctx.provide('tools', tools)
+  const agent = { id: 'dead-1', session: { id: 'dead-1', header: { cwd } } }
+  agent.ctx = ctx
+  ctx.provide('agents', { list: () => [agent] })
+
+  const storeDir = join(base, 'store')
+  const runtime = installMcpVisibility(ctx, new McpHub({ storeDir }), () => liveMcpServers(ctx), { storeDir })
+  runtime.attach(agent)
+
+  await assert.rejects(
+    () => runtime.start({ layer: 'session', sessionId: 'dead-1', folder: cwd }, 'dead'),
+    /Cannot start "dead"/,
+  )
+
+  // Nothing is mounted, so the row says so and carries the reason, instead of
+  // claiming a running server with zero tools.
+  const row = runtime.catalog({ layer: 'session', sessionId: 'dead-1', folder: cwd })
+    .servers.find(server => server.name === 'dead')
+  assert.equal(row.running, false)
+  assert.equal(row.managed, false)
+  assert.equal(row.startRequired, true)
+  assert.equal(tools.registered.size, 0)
+  assert.ok(row.problems.some(problem => problem.startsWith('Start failed:')),
+    `the row should carry the failure; saw ${JSON.stringify(row.problems)}`)
+  assert.deepEqual(liveMcpServers(ctx), [], 'the rejected activation must leave no fiber behind')
+})
+
 test('an approved declaration runs by itself when the session opens', async (t) => {
   const base = await mkdtemp(join(tmpdir(), 'skillhub-autostart-'))
   const cwd = join(base, 'project')

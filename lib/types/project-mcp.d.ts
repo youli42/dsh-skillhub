@@ -105,6 +105,12 @@ export interface McpClientConfig {
  *
  * `cwd` is always the session folder so a relative argument such as
  * `./Test_DreamShader.uproject` resolves exactly as it does for the other agent.
+ *
+ * `failOnStartupError` is on: SkillHub owns this mount, so a server that never
+ * connected must not look mounted. Activation awaits the initial connection and
+ * tool discovery and rejects with the underlying cause, which keeps one honest
+ * invariant — a fiber exists only for a server that is actually serving — and
+ * gives the panel a reason to show instead of "started, 0 tools".
  * @param name - server name, which becomes the `mcp__<name>__` tool namespace.
  * @param variant - approved declaration.
  * @param folder - session working directory.
