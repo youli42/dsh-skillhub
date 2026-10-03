@@ -198,6 +198,20 @@ export function installMcpVisibility(
     }
     return false
   }
+  /**
+   * Tool names the agent's own scope registers, on top of the globals `names()`
+   * reads. A server SkillHub mounted lives in the chat's scope, so its
+   * `mcp__<name>__*` tools never appear in the global view; counting without
+   * this reported 0 tools for a running, fully serving mount. Same read
+   * `problematic()` uses; a disposing context only loses the count.
+   */
+  const scopedToolNames = (agent: Agent): string[] => {
+    try {
+      return (agent.ctx.get('tools') as Tools).schemas(agent).map(t => t.name)
+    } catch {
+      return []
+    }
+  }
   const refresh = () => {
     if (refreshing || disposed) return
     refreshing = true
@@ -348,7 +362,12 @@ export function installMcpVisibility(
     const sessionAgent = agentFor(query.sessionId)
     if (sessionAgent !== undefined) autoStartApproved(sessionAgent)
     const servers = discover()
-    const result = hub.catalog(query, names(), servers)
+    // Count against the session's own scope too: without it, every server
+    // SkillHub mounted reads "0 tools" while running, because its tools are
+    // registered in the chat's scope and `names()` sees the global layer only.
+    // A query with no session (the settings page) keeps the global-only view.
+    const scopedNames = sessionAgent === undefined ? [] : scopedToolNames(sessionAgent)
+    const result = hub.catalog(query, [...new Set([...names(), ...scopedNames])], servers)
     const folder = project === undefined ? undefined : folderFor(query)
     const declared = folder === undefined || folder === '' ? EMPTY_READ : readDeclared(folder)
     const trust = folder === undefined || folder === '' ? EMPTY_TRUST : trustOf(folder)
