@@ -1,4 +1,5 @@
 import { propagatedGate, type PropagationMetadata } from './propagation.ts'
+import { PROJECT_IGNORE, isFile, rootEntry, type ProjectRootSpec } from './project-roots.ts'
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync } from 'node:fs'
 import { basename, dirname, join, posix, relative, sep } from 'node:path'
 
@@ -9,7 +10,13 @@ export function isHostSkillName(name: string): boolean {
   return HOST_SKILL_NAME.test(name)
 }
 
-export type HomeKind = 'agent' | 'dsh'
+/**
+ * Where a Skill lives. `agent` and `dsh` are the machine-wide user homes;
+ * `project` covers the agent-config roots inside the session working directory
+ * (`.agents/skills`, `.opencode/skills`, `.claude/skills`), each of which
+ * reports its own directory as a separate `HomeRoot`.
+ */
+export type HomeKind = 'agent' | 'dsh' | 'project'
 export type Gate = 'on' | 'off'
 export type VisibilityLayer = 'global' | 'project' | 'session'
 export type LayerGate = Gate | 'inherit'
@@ -78,6 +85,13 @@ export interface OfferedSkill {
   readonly description: string
   readonly whenToUse?: string
   readonly home: HomeKind
+  /**
+   * Discovery origin: `user-dsh`, `user-agents`, or a project root's source
+   * label (`project-agents`, `project-opencode`, `project-claude`,
+   * `project-custom`). The provider maps it to the registry's `source` label and
+   * to the candidate rank.
+   */
+  readonly origin: string
   readonly path: AbsolutePath
   readonly directory: AbsolutePath
   readonly invocation: { readonly modelInvocable: boolean; readonly userInvocable: boolean }
@@ -158,6 +172,10 @@ export interface HomeRoot {
   readonly home: HomeKind
   readonly path: AbsolutePath
   readonly children: readonly CatalogNode[]
+  /** Project homes carry their root's source label; user homes leave it unset. */
+  readonly source?: string
+  /** Project homes carry the folder name to show; user homes use `home`. */
+  readonly label?: string
 }
 
 export interface Catalog {
@@ -180,6 +198,13 @@ export interface Catalog {
 export interface ResolveInput {
   readonly agentHome: AbsolutePath
   readonly dshHome: AbsolutePath
+  /**
+   * Existing project skill roots for the session working directory. Absent for a
+   * Global-layer read (no folder is in scope) and for callers that do not care
+   * about project Skills; present for a Project or Chat read and for the
+   * provider's cwd-scoped lookup.
+   */
+  readonly projectRoots?: readonly ProjectRootSpec[]
   readonly global?: VisibilityDocument
   readonly project?: VisibilityDocument
   readonly session?: VisibilityDocument
@@ -204,6 +229,7 @@ type ParsedSkill = {
 type Leaf = {
   id: SkillId
   home: HomeKind
+  origin: string
   relPath: string
   path: AbsolutePath
   directory: AbsolutePath
@@ -215,14 +241,21 @@ function posixRel(from: string, to: string): string {
 }
 
 function parseFrontmatter(text: string): { fields: Record<string, string>; body: string } | undefined {
+  // A leading BOM stays unhandled on purpose: `dsh-skill-filesystem` rejects it
+  // too, and listing a Skill the model cannot load would be a lie.
   if (!text.startsWith('---')) return undefined
   const end = text.indexOf('\n---', 3)
   if (end < 0) return undefined
   const raw = text.slice(3, end).replace(/^\r?\n/, '')
   const body = text.slice(end + 4).replace(/^\r?\n/, '')
   const fields: Record<string, string> = {}
-  for (const line of raw.split(/\r?\n/)) {
-    const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line)
+  // Split on every line break an editor may have written, and let the value
+  // pattern cross a stray CR: `text.slice(3, end)` ends at the `\n` of a CRLF
+  // closing delimiter and therefore keeps that `\r`, which `.` cannot match —
+  // the reason a Windows-authored SKILL.md used to lose its last field (usually
+  // `description`) and be reported as broken instead of listed.
+  for (const line of raw.split(/\r\n|\r|\n/)) {
+    const match = /^([A-Za-z0-9_-]+):[ \t]*([\s\S]*)$/.exec(line)
     if (match === null || match[1] === undefined || match[2] === undefined) continue
     let value = match[2].trim()
     if (
@@ -351,6 +384,7 @@ function collectGates(node: FolderChild | PackNode): Gate[] {
 
 function walkGroup(
   home: HomeKind,
+  origin: string,
   homeRoot: string,
   dir: string,
   leaves: Leaf[],
@@ -373,6 +407,7 @@ function walkGroup(
       leaves.push({
         id,
         home,
+        origin,
         relPath: posix.join(rel, 'SKILL.md'),
         path: skillPath,
         directory: dir,
@@ -428,7 +463,7 @@ function walkGroup(
         children.push({ kind: 'broken', home, name, path: child, reason })
         continue
       }
-      children.push(walkGroup(home, homeRoot, child, leaves, broken, chain, depth + 1))
+      children.push(walkGroup(home, origin, homeRoot, child, leaves, broken, chain, depth + 1))
     }
   }
   const node: GroupNode = {
@@ -444,7 +479,13 @@ function walkGroup(
   return { ...node, gate: combineGates(collectGates(node)) }
 }
 
-function walkHome(home: HomeKind, homeRoot: string, leaves: Leaf[], broken: BrokenEntry[]): CatalogNode[] {
+function walkHome(
+  home: HomeKind,
+  origin: string,
+  homeRoot: string,
+  leaves: Leaf[],
+  broken: BrokenEntry[],
+): CatalogNode[] {
   if (!existsSync(homeRoot)) {
     return []
   }
@@ -475,6 +516,7 @@ function walkHome(home: HomeKind, homeRoot: string, leaves: Leaf[], broken: Brok
       leaves.push({
         id,
         home,
+        origin,
         relPath: name,
         path,
         directory: homeRoot,
@@ -514,7 +556,7 @@ function walkHome(home: HomeKind, homeRoot: string, leaves: Leaf[], broken: Brok
         try { target = readlinkSync(path) } catch { /* keep path */ }
         link = { kind: 'symlink', target }
       }
-      const walked = walkGroup(home, homeRoot, path, leaves, broken, ancestors, 1)
+      const walked = walkGroup(home, origin, homeRoot, path, leaves, broken, ancestors, 1)
       if (walked.kind === 'broken') {
         children.push(walked)
         continue
@@ -543,6 +585,103 @@ function walkHome(home: HomeKind, homeRoot: string, leaves: Leaf[], broken: Brok
     }
   }
   return regroupByOrigin(children, homeRoot)
+}
+
+/**
+ * Walk one project root, one level deep.
+ *
+ * Only `<root>/<name>/SKILL.md` and a flat `<root>/<name>.md` are Skills, which
+ * is exactly what `@deepseek-ai/dsh-skill-filesystem` discovers for its own
+ * project roots. A directory without `SKILL.md` (a `reference/` folder, for
+ * example) is skipped silently instead of reported as an empty pack: a project
+ * tree is arbitrary, and a non-Skill folder is not a defect. A malformed or
+ * unreadable `SKILL.md` still becomes a broken row so the panel can explain it.
+ * @param root - existing project root to scan.
+ * @param leaves - collectible Skill leaves, appended in place.
+ * @param broken - broken entries, appended in place.
+ * @returns flat tree children for this root.
+ */
+function walkProjectRoot(
+  root: ProjectRootSpec,
+  leaves: Leaf[],
+  broken: BrokenEntry[],
+): CatalogNode[] {
+  const home: HomeKind = 'project'
+  const children: CatalogNode[] = []
+  for (const name of listEntries(root.dir).sort()) {
+    if (IGNORE.has(name) || PROJECT_IGNORE.has(name)) continue
+    const path = rootEntry(root, name)
+    let stat
+    try {
+      stat = lstatSync(path)
+    } catch (error) {
+      const reason: BrokenReason = { kind: 'unreadable-skill', message: String(error) }
+      broken.push({ home, path, reason })
+      children.push({ kind: 'broken', home, name, path, reason })
+      continue
+    }
+    if (stat.isFile() && name.endsWith('.md')) {
+      const parsed = parseSkillFile(path)
+      if ('error' in parsed) {
+        broken.push({ home, path, reason: parsed.error })
+        children.push({ kind: 'broken', home, name, path, reason: parsed.error })
+        continue
+      }
+      const id = skillId(home, name)
+      leaves.push({ id, home, origin: root.source, relPath: name, path, directory: root.dir, parsed })
+      children.push({
+        kind: 'root-skill',
+        id,
+        name: parsed.name,
+        description: parsed.description,
+        home,
+        path,
+        gate: 'on',
+        source: 'global',
+        collision: false,
+      })
+      continue
+    }
+    if (!stat.isDirectory() && !stat.isSymbolicLink()) continue
+    if (stat.isSymbolicLink() && !existsSync(path)) {
+      let target = ''
+      try { target = readlinkSync(path) } catch { target = path }
+      const reason: BrokenReason = { kind: 'missing-symlink-target', target }
+      broken.push({ home, path, reason })
+      children.push({ kind: 'broken', home, name, path, reason })
+      continue
+    }
+    const skillPath = join(path, 'SKILL.md')
+    if (!isFile(skillPath)) continue
+    const parsed = parseSkillFile(skillPath)
+    if ('error' in parsed) {
+      broken.push({ home, path: skillPath, reason: parsed.error })
+      children.push({ kind: 'broken', home, name, path: skillPath, reason: parsed.error })
+      continue
+    }
+    const id = skillId(home, posix.join(name, 'SKILL.md'))
+    leaves.push({
+      id,
+      home,
+      origin: root.source,
+      relPath: posix.join(name, 'SKILL.md'),
+      path: skillPath,
+      directory: path,
+      parsed,
+    })
+    children.push({
+      kind: 'root-skill',
+      id,
+      name: parsed.name,
+      description: parsed.description,
+      home,
+      path: skillPath,
+      gate: 'on',
+      source: 'global',
+      collision: false,
+    })
+  }
+  return children
 }
 
 function applyGatesToTree(
@@ -633,8 +772,10 @@ export function resolveCatalog(input: ResolveInput): Catalog {
   const source = composed === undefined ? input : { ...input, global: composed.document }
   const leaves: Leaf[] = []
   const broken: BrokenEntry[] = []
-  const agentChildren = walkHome('agent', source.agentHome, leaves, broken)
-  const dshChildren = walkHome('dsh', source.dshHome, leaves, broken)
+  const agentChildren = walkHome('agent', 'user-dsh', source.agentHome, leaves, broken)
+  const dshChildren = walkHome('dsh', 'user-agents', source.dshHome, leaves, broken)
+  const projectRoots = source.projectRoots ?? []
+  const projectChildren = projectRoots.map(root => walkProjectRoot(root, leaves, broken))
 
   const byName = new Map<string, SkillId[]>()
   for (const leaf of leaves) {
@@ -663,6 +804,16 @@ export function resolveCatalog(input: ResolveInput): Catalog {
       path: source.dshHome,
       children: applyGatesToTree(dshChildren, collisionIds, source, composed),
     },
+    // One home per project root, so the panel can label `.agents` / `.opencode`
+    // / `.claude` separately and switch a whole root at once.
+    ...projectRoots.map((root, index): HomeRoot => ({
+      kind: 'home',
+      home: 'project',
+      path: root.dir,
+      source: root.source,
+      label: root.label,
+      children: applyGatesToTree(projectChildren[index] ?? [], collisionIds, source, composed),
+    })),
   ]
 
   const inventory: ManagedSkill[] = []
@@ -677,6 +828,7 @@ export function resolveCatalog(input: ResolveInput): Catalog {
       description: leaf.parsed.description,
       ...leaf.parsed.whenToUse !== undefined ? { whenToUse: leaf.parsed.whenToUse } : {},
       home: leaf.home,
+      origin: leaf.origin,
       path: leaf.path,
       directory: leaf.directory,
       invocation: {

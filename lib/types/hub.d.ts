@@ -10,6 +10,11 @@ export interface HubPaths {
     readonly agentHome: string;
     readonly dshHome: string;
     readonly storeDir: string;
+    /**
+     * Project skill roots, relative to the session working directory. Defaults to
+     * `.agents/skills`, `.opencode/skills`, and `.claude/skills`.
+     */
+    readonly projectRoots?: readonly string[];
 }
 export type VisibilityTarget = {
     readonly kind: 'skill';

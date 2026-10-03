@@ -1,6 +1,7 @@
 export type LayerName = 'global' | 'project' | 'session'
 export type GateSource = LayerName
-export type HomeKind = 'agent' | 'dsh'
+/** `project` covers the agent-config roots inside the session working directory. */
+export type HomeKind = 'agent' | 'dsh' | 'project'
 export type Gate = 'on' | 'off'
 export type GroupGate = 'on' | 'off' | 'mixed'
 
@@ -36,6 +37,10 @@ export type HomeRoot = {
   home: HomeKind
   path: string
   children: CatalogNode[]
+  /** Project roots report their discovery source (`project-agents`, …). */
+  source?: string
+  /** Project roots report the folder name to show (`.agents`, `.opencode`, `.claude`). */
+  label?: string
 }
 
 export type SkillRef = {

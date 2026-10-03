@@ -5,10 +5,9 @@ import { scopeOf } from '@deepseek-ai/dsh-scope'
 import type { SkillCandidate, SkillDefinition, SkillLookupOptions, SkillProvider, SkillViewOptions } from '@deepseek-ai/dsh-skill'
 import type { Catalog, ManagedSkill } from './catalog.ts'
 import type { SkillHub } from './hub.ts'
+import { isProjectSource, originPriority, originRank } from './project-roots.ts'
 
 const PROVIDER = 'skillhub'
-const USER_DSH_RANK = 350
-const USER_AGENTS_RANK = 351
 
 /**
  * Read a session id out of a value that may be an id, a plain `{ session }`
@@ -67,20 +66,41 @@ export function sessionIdFromScope(scope: unknown): string | undefined {
 }
 
 function toCandidate(skill: ManagedSkill): SkillCandidate {
-  const source = skill.home === 'dsh' ? 'user-dsh' : 'user-agents'
-  const rank = skill.home === 'dsh' ? USER_DSH_RANK : USER_AGENTS_RANK
   return {
     name: skill.name,
     description: skill.description,
     ...skill.whenToUse !== undefined ? { whenToUse: skill.whenToUse } : {},
     invocation: skill.invocation,
-    source,
+    source: skill.origin,
     provider: PROVIDER,
-    rank,
+    rank: originRank(skill.origin),
     locator: { path: skill.path, directory: skill.directory },
     path: skill.path,
     resourceBase: { kind: 'directory', path: skill.directory },
   }
+}
+
+/**
+ * Rank one Skill above another for the same name.
+ *
+ * A project copy always owns the name inside its workspace, which matches what
+ * DSH's own filesystem provider does (project roots rank below user roots).
+ * Between user homes the historical rule stands: an On sibling wins the name so
+ * that turning one home Off cannot hide the copy that is still On. The winner's
+ * invocation policy is what hides an Off Skill — its rank keeps the built-in
+ * provider from refilling the name.
+ * @param left - first candidate.
+ * @param right - second candidate.
+ * @returns negative when the left candidate wins.
+ */
+function compareCandidates(left: ManagedSkill, right: ManagedSkill): number {
+  const leftProject = isProjectSource(left.origin)
+  const rightProject = isProjectSource(right.origin)
+  if (leftProject !== rightProject) return leftProject ? -1 : 1
+  const leftOn = left.gate === 'on'
+  const rightOn = right.gate === 'on'
+  if (leftOn !== rightOn) return leftOn ? -1 : 1
+  return originPriority(left.origin) - originPriority(right.origin)
 }
 
 export function providerSkillsFromCatalog(catalog: Catalog): ManagedSkill[] {
@@ -92,10 +112,8 @@ export function providerSkillsFromCatalog(catalog: Catalog): ManagedSkill[] {
   }
   const selected: ManagedSkill[] = []
   for (const group of byName.values()) {
-    const on = group.filter(skill => skill.gate === 'on')
-    const pool = on.length > 0 ? on : group
-    pool.sort((left, right) => Number(left.home !== 'dsh') - Number(right.home !== 'dsh'))
-    const pick = pool[0]
+    const sorted = [...group].sort(compareCandidates)
+    const pick = sorted[0]
     if (pick === undefined) continue
     selected.push(pick)
   }

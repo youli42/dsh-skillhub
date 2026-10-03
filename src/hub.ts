@@ -7,6 +7,7 @@ import {
   type Catalog, type HomeKind, type LayerGate, type PackNode, type SkillId,
   type VisibilityDocument, type VisibilityLayer,
 } from './catalog.ts'
+import { DEFAULT_PROJECT_SKILL_ROOTS, projectSkillRoots } from './project-roots.ts'
 
 export type LayerName = VisibilityLayer
 export type CatalogQuery = {
@@ -19,6 +20,11 @@ export interface HubPaths {
   readonly agentHome: string
   readonly dshHome: string
   readonly storeDir: string
+  /**
+   * Project skill roots, relative to the session working directory. Defaults to
+   * `.agents/skills`, `.opencode/skills`, and `.claude/skills`.
+   */
+  readonly projectRoots?: readonly string[]
 }
 export type VisibilityTarget =
   | { readonly kind: 'skill'; readonly id: SkillId }
@@ -127,9 +133,16 @@ export class SkillHub {
     const global = readDoc(this.globalPath(), 'global')
     const project = layer === 'global' || folder === undefined ? undefined : readDoc(this.projectPath(folder), 'project')
     const session = layer !== 'session' || query.sessionId === undefined ? undefined : readDoc(this.sessionPath(query.sessionId), 'session')
+    // Project Skills exist only for a workspace. A Global read has no folder in
+    // scope, so it must not invent one — the one place a project Skill would be
+    // both unaddressable and unwritable.
+    const projectRoots = layer === 'global' || folder === undefined
+      ? []
+      : projectSkillRoots(folder, this.paths.projectRoots ?? DEFAULT_PROJECT_SKILL_ROOTS)
     return {
       ...resolveCatalog({ agentHome: this.paths.agentHome, dshHome: this.paths.dshHome, global,
-        ...(project !== undefined ? { project } : {}), ...(session !== undefined ? { session } : {}) }),
+        ...(project !== undefined ? { project } : {}), ...(session !== undefined ? { session } : {}),
+        ...(projectRoots.length > 0 ? { projectRoots } : {}) }),
       layer,
       ...(query.resolved ? { resolved: true } : {}),
       ...(session?.legacySnapshot ? { legacySessionSnapshot: true } : {}),

@@ -1,6 +1,13 @@
 import { type PropagationMetadata } from './propagation.ts';
+import { type ProjectRootSpec } from './project-roots.ts';
 export declare function isHostSkillName(name: string): boolean;
-export type HomeKind = 'agent' | 'dsh';
+/**
+ * Where a Skill lives. `agent` and `dsh` are the machine-wide user homes;
+ * `project` covers the agent-config roots inside the session working directory
+ * (`.agents/skills`, `.opencode/skills`, `.claude/skills`), each of which
+ * reports its own directory as a separate `HomeRoot`.
+ */
+export type HomeKind = 'agent' | 'dsh' | 'project';
 export type Gate = 'on' | 'off';
 export type VisibilityLayer = 'global' | 'project' | 'session';
 export type LayerGate = Gate | 'inherit';
@@ -59,6 +66,13 @@ export interface OfferedSkill {
     readonly description: string;
     readonly whenToUse?: string;
     readonly home: HomeKind;
+    /**
+     * Discovery origin: `user-dsh`, `user-agents`, or a project root's source
+     * label (`project-agents`, `project-opencode`, `project-claude`,
+     * `project-custom`). The provider maps it to the registry's `source` label and
+     * to the candidate rank.
+     */
+    readonly origin: string;
     readonly path: AbsolutePath;
     readonly directory: AbsolutePath;
     readonly invocation: {
@@ -140,6 +154,10 @@ export interface HomeRoot {
     readonly home: HomeKind;
     readonly path: AbsolutePath;
     readonly children: readonly CatalogNode[];
+    /** Project homes carry their root's source label; user homes leave it unset. */
+    readonly source?: string;
+    /** Project homes carry the folder name to show; user homes use `home`. */
+    readonly label?: string;
 }
 export interface Catalog {
     readonly offered: readonly OfferedSkill[];
@@ -160,6 +178,13 @@ export interface Catalog {
 export interface ResolveInput {
     readonly agentHome: AbsolutePath;
     readonly dshHome: AbsolutePath;
+    /**
+     * Existing project skill roots for the session working directory. Absent for a
+     * Global-layer read (no folder is in scope) and for callers that do not care
+     * about project Skills; present for a Project or Chat read and for the
+     * provider's cwd-scoped lookup.
+     */
+    readonly projectRoots?: readonly ProjectRootSpec[];
     readonly global?: VisibilityDocument;
     readonly project?: VisibilityDocument;
     readonly session?: VisibilityDocument;

@@ -7,6 +7,8 @@ import type { SkillProviderControl } from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
 import { McpHub } from './mcp.ts'
 import { installMcpVisibility } from './mcp-runtime.ts'
+import { DEFAULT_PROJECT_MCP_FILES } from './project-mcp.ts'
+import { DEFAULT_PROJECT_SKILL_ROOTS } from './project-roots.ts'
 import { SkillHub } from './hub.ts'
 import { handleSkillHubHttp } from './http.ts'
 import { createSkillHubProvider } from './provider.ts'
@@ -17,10 +19,23 @@ export const inject = ['skills', 'webServer', 'connection', 'tools', 'agents']
 export interface Config {
   /** Profile field. A settings edit is stored immediately and read on the next Host load. */
   enabled: Volatile<boolean>
+  /**
+   * Project skill roots, relative to the session working directory. Defaults to
+   * `.agents/skills`, `.opencode/skills`, and `.claude/skills`; an empty list
+   * turns project Skills off entirely.
+   */
+  projectSkillRoots: string[]
+  /**
+   * Project MCP declaration files, relative to the session working directory.
+   * Defaults to `.mcp.json` and `.opencode/opencode.json`.
+   */
+  projectMcpFiles: string[]
 }
 
 export const Config = z.object({
   enabled: z.boolean().default(true).volatile(),
+  projectSkillRoots: z.array(String).default([...DEFAULT_PROJECT_SKILL_ROOTS]),
+  projectMcpFiles: z.array(String).default([...DEFAULT_PROJECT_MCP_FILES]),
 })
 
 function env(name: string): string | undefined {
@@ -55,13 +70,19 @@ export function apply(ctx: Context, config: Config) {
     agentHome: defaultAgentHome(),
     dshHome: defaultDshHome(),
     storeDir: defaultStoreDir(),
+    projectRoots: config.projectSkillRoots,
   })
   let control: SkillProviderControl | undefined
   ctx.skills.registerProvider((next) => {
     control = next
     return createSkillHubProvider(hub)
   })
-  const mcp = installMcpVisibility(ctx, new McpHub({ storeDir: defaultStoreDir() }))
+  const mcp = installMcpVisibility(
+    ctx,
+    new McpHub({ storeDir: defaultStoreDir() }),
+    undefined,
+    { storeDir: defaultStoreDir(), files: config.projectMcpFiles },
+  )
   const invalidate = () => { control?.invalidate() }
   const connection = ctx.get('connection') as {
     requestRejection: (request: Parameters<ReturnType<typeof handleSkillHubHttp>>[0]) => 401 | 403 | undefined

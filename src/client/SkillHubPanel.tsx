@@ -6,7 +6,7 @@ import {
   Tag, Toast, Tooltip, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
-import type { CatalogNode, CatalogPayload, Gate, GroupChild, GroupGate, HomeKind, LayerName, SkillRef } from './catalog-api.ts'
+import type { CatalogNode, CatalogPayload, Gate, GroupChild, GroupGate, HomeKind, HomeRoot, LayerName, SkillRef } from './catalog-api.ts'
 import { fetchCatalog, postCatalog } from './catalog-api.ts'
 import type { SkillHubKey } from './locales.ts'
 import css from './SkillHubPanel.module.css'
@@ -66,7 +66,14 @@ function brokenCopy(t: Copy, reason: { kind: string; target?: string }): string 
   if (reason.kind === 'symlink-cycle') return t('broken.cycle')
   return reason.kind
 }
-function homeLabel(t: Copy, home: HomeKind): string { return t(home === 'agent' ? 'home.agent' : 'home.dsh') }
+function homeLabel(t: Copy, home: HomeRoot): string {
+  if (home.home === 'project') return home.label ?? t('home.project')
+  return t(home.home === 'agent' ? 'home.agent' : 'home.dsh')
+}
+/** `.opencode` and `.claude` Skills reach the model only through SkillHub. */
+function isSkillHubOnly(home: HomeRoot): boolean {
+  return home.home === 'project' && home.source !== undefined && home.source !== 'project-agents'
+}
 function collectSkills(nodes: readonly Node[]): SkillRef[] {
   return nodes.flatMap(node => {
     if (node.kind === 'broken') return []
@@ -324,23 +331,33 @@ export function SkillHubPanel(props: {
         </div> : null}
         {catalog !== undefined && (allSkillCount > 0 || needle !== '') ? catalog.tree.map(home => {
           const children = clusterFlatPacks(home.children).filter(node => needle === '' || nodeMatches(node, needle))
-          const hideHomeChrome = props.surface === 'popover' && catalog.tree.filter(row => row.children.length > 0).length <= 1
-          const homeKey = `home:${home.home}`
+          // Collapse the home chrome only when the single populated home is a user
+          // home. A project root keeps its header even when it is the only one with
+          // Skills: `.opencode` / `.claude` skills reach the model only through
+          // SkillHub, and that label is the user's only signal for it.
+          const populated = catalog.tree.filter(row => row.children.length > 0)
+          const onlyHome = populated[0]
+          const hideHomeChrome = props.surface === 'popover' && populated.length <= 1
+            && (onlyHome === undefined || onlyHome.home !== 'project')
+          // One project root per home, so the path is the only stable identity.
+          const homeKey = `home:${home.home}:${home.path}`
           const homeOpen = hideHomeChrome || needle !== '' || (expanded[homeKey] ?? true)
           const homeCounts = countSkills(home.children)
           const homeIds = collectSkillIds(home.children)
-          const label = homeLabel(t, home.home)
+          const label = homeLabel(t, home)
+          const skillHubOnly = isSkillHubOnly(home)
           const toggleOpen = () => setExpanded(current => ({ ...current, [homeKey]: !(current[homeKey] ?? true) }))
           const tree = children.length === 0 ? <p className={css.empty}>{t(needle === '' ? 'empty.home' : 'empty.search')}</p>
             : children.map(node => <TreeNode key={node.kind === 'root-skill' ? node.id : node.path} node={node}
               depth={hideHomeChrome ? 0 : 1} needle={needle} expanded={expanded} setExpanded={setExpanded}
               disabled={!layerReady || busy} t={t} onToggle={toggleIds} />)
-          return <section key={home.home} className={css.home} aria-label={label}>
+          return <section key={homeKey} className={css.home} aria-label={label}>
             {!hideHomeChrome ? <div className={css.row} style={{ '--depth': '0' } as CSSProperties} data-folder="">
               <button type="button" className={css.chevron} aria-expanded={homeOpen}
                 aria-label={t(homeOpen ? 'collapse' : 'expand', { name: label })} onClick={toggleOpen}><IconChevronRightOutlineRegular size={14} /></button>
               <div className={css.cell}><button type="button" className={css.nameBtn} title={home.path} onClick={toggleOpen}>
                 <span className={css.name}><span className={css.nameText}>{label}</span>
+                  {skillHubOnly ? <Tag tone="quiet">{t('badge.skillhubOnly')}</Tag> : null}
                   {homeIds.length > 1 ? <Tag tone="quiet">{skillCountLabel(t, homeIds.length)}</Tag> : null}
                 </span>
               </button></div>

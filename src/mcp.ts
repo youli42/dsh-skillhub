@@ -13,11 +13,47 @@ export interface McpVisibilityDocument extends PropagationMetadata {
   readonly gates: Readonly<Record<string, McpLayerGate>>
 }
 
+/**
+ * One declared way to start a server. A project may declare the same server name
+ * in more than one file (`.mcp.json` and `.opencode/opencode.json`), so the
+ * panel lists every variant and the user picks the one that runs.
+ */
+export interface McpVariantView {
+  /** Declaration source: `mcp-json` or `opencode-json`. */
+  readonly source: string
+  readonly transport: string
+  /** Rendered command line, or the endpoint URL for HTTP. */
+  readonly command: string
+  /** Approval exists for this exact declaration content. */
+  readonly approved: boolean
+  /** Nothing in this variant would stop it from starting. */
+  readonly startable: boolean
+  readonly problems: readonly string[]
+}
+
 export interface McpServerView {
   readonly name: string
   readonly tools: number
   readonly gate: McpGate
   readonly source: McpLayer
+  /** A live `mcp-client` fiber exists in this session. */
+  readonly running?: boolean
+  /** Declared by a project file for this folder. */
+  readonly declared?: boolean
+  /** SkillHub mounted it for this session, so hiding it is provably complete. */
+  readonly managed?: boolean
+  /**
+   * Declared for this folder but not running: the user has to approve and start
+   * it before its visibility can mean anything, so the panel shows it Off and
+   * offers no switch.
+   */
+  readonly startRequired?: boolean
+  /** Hiding it through the public tool API removes every one of its tools. */
+  readonly supported?: boolean
+  /** Declared ways to start it, in priority order. */
+  readonly variants?: readonly McpVariantView[]
+  /** Aggregated declaration problems, already human-readable. */
+  readonly problems?: readonly string[]
 }
 
 export interface McpCatalogQuery {

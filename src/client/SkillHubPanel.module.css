@@ -404,6 +404,8 @@
 .cell {
   display: flex;
   min-width: 0;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .nameBtn {
@@ -578,6 +580,48 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* Declared project MCP servers: the exact command line is part of the row, so a
+ * user can see what "Trust and start" would run before approving it. */
+.variantList {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.variant {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.variantSource {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.variantCommand {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problems {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--dsw-alias-state-warn-primary);
+  font-size: 11px;
+  line-height: 17px;
 }
 
 @media (prefers-reduced-motion: reduce) {

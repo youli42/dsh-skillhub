@@ -87,7 +87,7 @@ function visibilityTarget(body: Record<string, unknown>): VisibilityTarget {
   if (kind === 'ids' && isSkillIdList(body['ids'])) {
     return { kind: 'ids', ids: body['ids'] }
   }
-  if (kind === 'home' && (body['home'] === 'agent' || body['home'] === 'dsh')) {
+  if (kind === 'home' && (body['home'] === 'agent' || body['home'] === 'dsh' || body['home'] === 'project')) {
     return { kind: 'home', home: body['home'] }
   }
   if (
@@ -156,6 +156,23 @@ export function handleSkillHubHttp(
         send(res, 200, mcp.mutate(q, body['server'], path === '/mcp/toggle' ? body['on'] as boolean : undefined))
         return
       }
+      // Starting a declared project server mounts a `dsh-mcp-client` fiber in the
+      // chat's own scope. It happens only here, and only after the user approves
+      // the exact declaration content in the panel.
+      if (path === '/mcp/start' || path === '/mcp/stop') {
+        if (!mcp) throw new Error('MCP visibility unavailable')
+        if (typeof body['server'] !== 'string') throw new Error('server required')
+        if (typeof body['sessionId'] !== 'string' || body['sessionId'] === '') throw new Error('sessionId required')
+        for (const key of ['folder', 'source']) if (body[key] !== undefined && typeof body[key] !== 'string') throw new Error(`invalid ${key}`)
+        const layer = body['layer']
+        if (layer !== undefined && layer !== 'global' && layer !== 'project' && layer !== 'session') throw new Error('invalid MCP layer')
+        const q: import('./mcp.ts').McpCatalogQuery = { ...(typeof layer === 'string' ? { layer } : {}), sessionId: body['sessionId'], ...(typeof body['folder'] === 'string' ? { folder: body['folder'] } : {}) }
+        const result = path === '/mcp/start'
+          ? await mcp.start(q, body['server'], typeof body['source'] === 'string' ? body['source'] : undefined)
+          : await mcp.stop(q, body['server'])
+        send(res, 200, result)
+        return
+      }
       if (path === '/toggle') {
         const layer = body['layer']
         if (layer !== 'global' && layer !== 'project' && layer !== 'session') {
@@ -222,7 +239,7 @@ export function handleSkillHubHttp(
       // readDoc/writeDoc paths — is an internal failure and answers 500.
       const message = String(error)
       const client = !/visibility document/i.test(message)
-        && /required|invalid|must be|no longer registered|Cannot fully hide/i.test(message)
+        && /required|invalid|must be|not registered|no longer registered|not declared|Cannot fully hide|Cannot start/i.test(message)
       send(res, client ? 400 : 500, { error: message })
     }
   }
