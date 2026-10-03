@@ -295,3 +295,26 @@ test('composed catalog uses the actual scoped default and ignores foreign marker
   assert.equal(inv.three.gate, 'off')
   assert.equal(inv.three.source, 'project')
 })
+
+test('a CRLF SKILL.md keeps the field that sits last in its frontmatter', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'skillhub-crlf-'))
+  const agent = join(root, 'agent')
+  const dsh = join(root, 'dsh')
+  // A Windows-authored file: the slice up to the closing delimiter ends at the
+  // `\n` of `\r\n---` and therefore kept the `\r`, so the LAST field never
+  // matched its line pattern — with `description` last the whole skill came back
+  // as invalid frontmatter instead of being listed.
+  await mkdir(join(agent, 'crlf-skill'), { recursive: true })
+  await writeFile(
+    join(agent, 'crlf-skill', 'SKILL.md'),
+    '---\r\nname: crlf-skill\r\nwhenToUse: always\r\ndescription: written on Windows\r\n---\r\n\r\nBody line.\r\n',
+  )
+  await mkdir(dsh, { recursive: true })
+  const catalog = resolveCatalog({ agentHome: agent, dshHome: dsh })
+  assert.deepEqual(catalog.broken, [])
+  assert.deepEqual(catalog.offered.map(skill => skill.name), ['crlf-skill'])
+  const skill = catalog.inventory[0]
+  assert.equal(skill.description, 'written on Windows')
+  assert.equal(skill.whenToUse, 'always')
+  assert.equal(skill.content.trim(), 'Body line.')
+})

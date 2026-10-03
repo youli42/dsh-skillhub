@@ -108,6 +108,66 @@ test('MCP routes enforce authentication and validate writes before dispatch', as
   assert.equal(res.result.status,200);assert.equal(writes,1)
 })
 
+test('project MCP start and stop reach the runtime and answer client mistakes as 400', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'skillhub-mcp-start-'))
+  const hub = new SkillHub({ agentHome: join(root, 'agent'), dshHome: join(root, 'dsh'), storeDir: join(root, 'store') })
+  const calls = []
+  const mcp = {
+    catalog: () => ({ servers: [] }),
+    mutate: () => ({ servers: [] }),
+    start: async (query, server, source) => {
+      calls.push({ kind: 'start', query, server, source })
+      return { servers: [], started: server, variant: 'node -e 0' }
+    },
+    stop: async (query, server) => {
+      calls.push({ kind: 'stop', query, server })
+      return { servers: [] }
+    },
+  }
+  const handle = handleSkillHubHttp(hub, () => {}, () => undefined, mcp)
+
+  // A missing session id never reaches the runtime: a declared server is started
+  // for one chat, so the chat has to be named.
+  const missing = response()
+  await handle(request('/skillhub/mcp/start', { layer: 'session', server: 'ue-mcp' }), missing)
+  assert.equal(missing.result.status, 400)
+  assert.deepEqual(calls, [])
+
+  const started = response()
+  await handle(request('/skillhub/mcp/start', {
+    layer: 'session', sessionId: 's1', folder: root, server: 'ue-mcp', source: 'opencode-json',
+  }), started)
+  assert.equal(started.result.status, 200)
+  assert.deepEqual(calls, [{
+    kind: 'start',
+    query: { layer: 'session', sessionId: 's1', folder: root },
+    server: 'ue-mcp',
+    source: 'opencode-json',
+  }])
+  assert.equal(JSON.parse(started.result.body).started, 'ue-mcp')
+
+  const stopped = response()
+  await handle(request('/skillhub/mcp/stop', { layer: 'session', sessionId: 's1', server: 'ue-mcp' }), stopped)
+  assert.equal(stopped.result.status, 200)
+  assert.deepEqual(calls[1], {
+    kind: 'stop',
+    query: { layer: 'session', sessionId: 's1' },
+    server: 'ue-mcp',
+  })
+
+  // A refused start is the user's mistake, not a Host failure.
+  const refusing = handleSkillHubHttp(hub, () => {}, () => undefined, {
+    catalog: () => ({ servers: [] }),
+    mutate: () => ({ servers: [] }),
+    start: async () => { throw new Error('MCP service "ue-mcp" is not declared in this project') },
+    stop: async () => ({ servers: [] }),
+  })
+  const refused = response()
+  await refusing(request('/skillhub/mcp/start', { layer: 'session', sessionId: 's1', server: 'ue-mcp' }), refused)
+  assert.equal(refused.result.status, 400)
+  assert.match(JSON.parse(refused.result.body).error, /not declared/)
+})
+
 test('a corrupted store answers 500 while client mistakes stay 400', async () => {
   const root = await mkdtemp(join(tmpdir(), 'skillhub-http-'))
   const store = join(root, 'store')
