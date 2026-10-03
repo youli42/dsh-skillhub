@@ -18,6 +18,7 @@
 
 ### 修复
 
+- **MCP 启动失败不再伪装成"已启动、0 工具"**：之前 `failOnStartupError: false`，服务连不上时插件照样激活，于是那行会显示成已启动却一个工具都没有，原因只在 Host 日志里。现在 SkillHub 自己挂载的服务一律 `failOnStartupError: true`——激活本身就等首连与工具发现，失败即拒绝，行上出现「启动失败」标签和具体原因（含 `cause` 链，如 `spawn npx ENOENT`），并且不会留下任何 fiber。顺带修掉一个更隐蔽的问题：被拒绝的激活仍会在 Cordis 注册表里留下一个 fiber（连同 config），旧代码据此把它算成"在跑"；现在 `liveMcpServers` 只认 `ACTIVE`（state=2）的 fiber。信任记录在失败后保留（信任是对命令的表态，不是对当下能否启动的表态），点「启动」即可重试，成功后失败提示自动消失。
 - **CRLF 的 SKILL.md 会丢掉最后一个 frontmatter 字段**：截取 frontmatter 时切片停在闭合分隔符的 `\n` 上，于是保留了一个 `\r`，而字段行的 `(.*)$` 无法跨过 `\r`——Windows 上写的技能（最后一个字段常常正是 `description`）会被判成 `invalid-frontmatter`，整条技能不显示。现在按 `\r\n` / `\r` / `\n` 三种换行切行，字段值用可跨 `\r` 的模式并 `trim()`。这个 bug 同时影响用户目录里的技能，不只是项目技能；真机检查时 `D:\SSDWP\UE\Test_DreamShader\.agents\skills` 的 11 个技能全部命中过它。
 
 ### 兼容
