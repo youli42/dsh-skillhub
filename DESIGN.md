@@ -4,7 +4,7 @@ name: SkillHub
 description: Native DSH viewer for skills already on disk in Agent home and DSH home
 colors:
   primary: "var(--dsw-static-deepseek-450)"
-  surface: "var(--dsw-specific-menu)"
+  surface: "var(--dsw-alias-bg-overlay)"
   on-surface: "var(--dsw-alias-label-primary)"
   on-surface-secondary: "var(--dsw-alias-label-secondary)"
   on-surface-tertiary: "var(--dsw-alias-label-tertiary)"
@@ -100,7 +100,7 @@ At 320px the popover uses the viewport clamp. The composer chip hides its text l
 
 ## Elevation & Depth
 
-The popover uses `{dsw-shadow-lv3}` and a 1px `{colors.border}` on `{colors.surface}`, same family as Glance and Watcher. The settings page is flat in the host column. Tree rows use hover fill, not extra chrome. No glass, no gradient, no drop shadow on rows.
+The popover uses the host's prominent elevation and hairline stroke over an opaque surface, in the same family as the host's own floating panels; the settings page is flat in the host column. Tree rows use hover fill, not extra chrome. No glass, no gradient, no drop shadow on rows. The surface is deliberately opaque: the host's frosted menu fill carries alpha (94% in the default themes, 58% in another) and is only legible because the host pairs it with `backdrop-filter: blur(40px) saturate(150%)`. This panel uses no backdrop blur, so the fill is layered over `{colors.surface}` — the documented opaque overlay background — which keeps the host's menu tone without letting the chat read through.
 
 ## Shapes
 

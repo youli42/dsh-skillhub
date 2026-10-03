@@ -182,4 +182,15 @@ test('the client bundle loads, registers both slots, and renders its shells', ()
   for (const local of ['variantList', 'variant', 'variantSource', 'variantCommand', 'problems', 'cell', 'slash', 'switch']) {
     assert.match(bundleSource, new RegExp(`[A-Za-z0-9]{6}_${local}\\{`), `the stylesheet should define .${local}`)
   }
+
+  // The popover paints an opaque surface. `--dsw-specific-menu` is the host's
+  // frosted menu fill: it carries alpha and is meant to be used together with
+  // `backdrop-filter`, so on its own it let the chat read through the panel. It
+  // may only appear layered over the opaque overlay background.
+  assert.match(bundleSource, /_menu\{[^}]*background-color:var\(--dsw-alias-bg-overlay\)/,
+    'the popover should paint the opaque overlay background')
+  assert.match(bundleSource, /_menu\{[^}]*background-image:linear-gradient\(var\(--dsw-specific-menu\),\s*var\(--dsw-specific-menu\)\)/,
+    'the host menu tone should be layered over that opaque background')
+  assert.doesNotMatch(bundleSource, /_menu\{[^}]*[^-]background:var\(--dsw-specific-menu\)/,
+    'the popover must never assign the translucent fill as its only background')
 })

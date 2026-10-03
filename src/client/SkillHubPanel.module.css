@@ -112,10 +112,20 @@
   max-width: calc(100vw - 24px);
   max-height: min(640px, calc(100vh - 24px));
   overflow: hidden;
-  border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
-  background: var(--dsw-specific-menu);
-  box-shadow: var(--dsw-shadow-lv3);
+  /* An opaque popover surface that keeps the host's menu tone.
+     `--dsw-specific-menu` is the host's frosted menu fill: it carries alpha
+     (94% in the default themes, 58% in another) and the host always pairs it
+     with `backdrop-filter: blur(40px) saturate(150%)`. This panel uses no
+     backdrop blur, so on its own that fill was see-through and the chat behind
+     it read straight through the rows. Painting the fill over the documented
+     overlay background keeps the tone and makes the surface fully opaque.
+     Elevation matches the host's own floating panel: the prominent shadow
+     carries its own hairline stroke, so no separate border is drawn. */
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  background-color: var(--dsw-alias-bg-overlay);
+  background-image: linear-gradient(var(--dsw-specific-menu), var(--dsw-specific-menu));
+  box-shadow: var(--dsw-elevation-prominent);
   color: var(--dsw-alias-label-primary);
   font-family: var(--dsw-font-family);
   font-size: 13px;
