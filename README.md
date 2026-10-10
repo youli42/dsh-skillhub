@@ -6,8 +6,8 @@
 
 已包含编译产物；普通使用无需 pnpm、本地构建或 DSHX。
 
-[![GitHub Release](https://img.shields.io/badge/release-v1.0.4-blue?style=flat-square)](https://github.com/aa2246740/dsh-skillhub/releases)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.0--rc.1-4F46E5?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness/tree/dsh-v0.2.0-rc.2)
+[![GitHub Release](https://img.shields.io/badge/release-v1.0.7-blue?style=flat-square)](https://github.com/aa2246740/dsh-skillhub/releases)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.0--rc.2-4F46E5?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness/tree/dsh-v0.2.0-rc.2)
 [![License](https://img.shields.io/badge/license-MIT-yellow?style=flat-square)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/aa2246740/dsh-skillhub?style=flat-square)](https://github.com/aa2246740/dsh-skillhub/stargazers)
 
@@ -42,23 +42,49 @@
 
 ## 📦 安装
 
+支持 DeepSeek Harness **0.2.0-rc.2**。GitHub 和 npm 使用同一个包名 `@aa2246740/dsh-skillhub`，安装时不要设置 npm 别名。
+
+**版本对照**（装错版本会被 DSH 在启动时整体拒绝，表现为「装了但完全没有入口」）：
+
+| DSH 版本 | 可装的插件版本 |
+|---|---|
+| 0.2.0-rc.x | `1.0.4` 及以上（推荐最新） |
+| 0.1.7-rc.x | `1.0.2`（1.0.4+ 不兼容） |
+| 0.1.5 | `1.0.1` |
+
 ### DSH Studio 桌面 App（推荐）
 
 打开 **设置 → 插件 → 添加插件**，在“包名或地址”中输入：
 
 ```text
-github:aa2246740/dsh-skillhub#v1.0.4
+@aa2246740/dsh-skillhub@1.0.7
 ```
 
-桌面端插件管理器负责 Desktop profile 和内置包管理器。本发布已包含编译产物；普通使用不需要 clone、构建或安装 DSHX。若应用提示刷新或重新打开，请按提示完成。
+也可安装相同版本的 GitHub 包：
+
+```text
+github:aa2246740/dsh-skillhub#v1.0.7
+```
+
+任选一种安装即可。桌面插件管理器会操作 Desktop profile；普通使用不需要 clone、构建或安装 DSHX。安装完成后点击 **「立即启用」**，或在插件列表打开该插件的启用开关。显示“已安装”但未启用时，设置里不会出现入口。启用后检查 `skill&mcp` 页面；若管理器明确提示需要重新打开应用，按提示完成。
+
+### 从 1.0.4 或更早版本迁移
+
+1. 在桌面 **设置 → 插件** 中移除旧的 `dsh-skillhub` 或旧版 `@aa2246740/dsh-skillhub` 安装项。
+2. 用上面的包名安装 1.0.6，并点击「立即启用」。不要继续使用 `dsh-skillhub@npm:...` 别名，也不要保留两份安装。
+3. 检查设置中的 `skill&mcp` 页面和对话输入框上方的「技能」按钮。
+
+技能和 MCP 开关仍保存在 `$DSH_HOME/skillhub/`，迁移不需要删除该目录，也不需要删除原始技能文件。
 
 ### Web CLI
 
 ```bash
-dsh plugin --profile web add github:aa2246740/dsh-skillhub#v1.0.4
+dsh plugin --profile web add @aa2246740/dsh-skillhub@1.0.7
 ```
 
-这条官方 CLI 命令只写入 `web` profile，不能修改 Desktop App 的 profile。对于已经运行的 Web Host，请重新打开该 Host 一次，再刷新网页；不要用这条命令给桌面 App 安装。
+旧版 Web 用户先用 `dsh plugin --profile web remove dsh-skillhub` 移除旧别名项；若旧项使用带作用域的包名，则移除 `@aa2246740/dsh-skillhub` 后再安装。以安装器返回的应用结果为准处理生效步骤。
+
+Web 命令只作用于 `web` profile，不能给桌面 App 安装插件。
 
 ---
 
@@ -97,16 +123,16 @@ dsh plugin --profile web add github:aa2246740/dsh-skillhub#v1.0.4
 
 ## 🔄 升级与卸载
 
-### 更新至最新版本
+桌面端在 **设置 → 插件** 中升级或卸载。首次从旧包名迁移时，按上面的迁移步骤操作。
+
+Web 用户使用：
 
 ```bash
-dsh plugin --profile web add github:aa2246740/dsh-skillhub#v1.0.4
-```
+# 更新
+dsh plugin --profile web add @aa2246740/dsh-skillhub@1.0.7
 
-### 卸载插件
-
-```bash
-dsh plugin --profile web remove dsh-skillhub
+# 卸载
+dsh plugin --profile web remove @aa2246740/dsh-skillhub
 ```
 
 ---
@@ -116,7 +142,7 @@ dsh plugin --profile web remove dsh-skillhub
 <details>
 <summary><b>Q: 安装后刷新页面没有出现插件功能？</b></summary>
 
-A: DSH 插件在服务启动时编排 Context 树。请在运行 DSH 的终端按 `Ctrl + C` 停止，然后重新运行 `dsh web` 启动即可。
+A: 先按上面的**版本对照**确认插件版本与 DSH 版本匹配——不匹配时 DSH 会在启动时整行拒绝该插件，界面上什么都看不到，重启也不会恢复。再确认安装到了当前使用的 Desktop 或 Web profile（第三方启动器的「整合包」默认装进独立 profile，需要切到那份 profile 运行），并且已点击「立即启用」或打开插件开关（部分启动器在插件报错后会自动关闭开关，升级 DSH 后需手动重新打开），再查看插件管理器的加载结果。npm 1.0.4 的包名与前端注册名不一致，即使用旧说明中的别名安装，DSH 也可能跳过前端入口。请按迁移步骤换成 1.0.6，直接使用 `@aa2246740/dsh-skillhub@1.0.7`。若仍缺少入口，请提供 DSH 版本、安装地址及管理器错误文字；反复刷新不会修复包名错误。
 </details>
 
 <details>
@@ -132,6 +158,18 @@ A: 关闭技能会立刻阻止后续向模型提供该技能的定义，但如�
 </details>
 
 ---
+
+## 开发与发布检查
+
+源码构建使用 DSHX 的外部插件构建器，`DSHX_HARNESS` 指向安装了 DSHX 的官方 `dsh-v0.2.0-rc.2` checkout。构建仅读取目标平台信息，输出保存在本插件目录。
+
+```bash
+pnpm install --frozen-lockfile --ignore-workspace --config.auto-install-peers=false
+pnpm test
+pnpm pack
+```
+
+`prepack` 校验包名、bundle 模块名和编译后的前端注册名；不一致时拒绝打包。发布时直接使用这个包，不要再改写包名。隔离加载回归运行方式见 `tests/package-loader-runtime.test.mjs`。
 
 ## 📄 License
 

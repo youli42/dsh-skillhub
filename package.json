@@ -1,6 +1,9 @@
 {
-  "name": "dsh-skillhub",
-  "version": "1.0.4",
+  "name": "@aa2246740/dsh-skillhub",
+  "version": "1.0.7",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "DSH manager for user Skills already on disk in Agent home and DSH home",
   "repository": {
     "type": "git",
@@ -23,7 +26,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && tsdown",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm run build && node --test tests/*.test.mjs"
+    "test": "pnpm run build && node --test tests/*.test.mjs",
+    "prepack": "node scripts/check-package.mjs"
   },
   "exports": {
     ".": {
@@ -56,6 +60,7 @@
   "files": [
     "lib/*.js",
     "lib/types/**/*.d.ts",
+    "scripts/check-package.mjs",
     "cordis.patch.yml",
     "cordis.yml",
     "README.md",

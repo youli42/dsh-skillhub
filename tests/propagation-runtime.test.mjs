@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { SkillHub } from '../lib/types/hub.js'
@@ -9,8 +10,8 @@ import { createSkillHubProvider } from '../lib/types/provider.js'
 import { attachAgentProvider } from '../lib/types/dsh-skillhub.js'
 const root = process.env.DSHX_HARNESS
 if (!root) throw new Error('Set DSHX_HARNESS for real provider reload regression')
-const Registry = (await import(`${root}/packages/skill/skill/lib/index.js`)).default
-const { createScope } = await import(`${root}/packages/core/scope/lib/index.js`)
+const Registry = (await import(pathToFileURL(join(root, 'packages/skill/skill/lib/index.js')).href)).default
+const { createScope } = await import(pathToFileURL(join(root, 'packages/core/scope/lib/index.js')).href)
 
 test('existing agents use cascading provider after reload, even with a stale legacy registration', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'skillhub-runtime-propagation-'))

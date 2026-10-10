@@ -217,7 +217,7 @@ export class SkillHub {
     const name = basename(sourceDir)
     const dest = join(destHome, name)
     if (existsSync(dest)) throw new Error(`Pack "${name}" already exists in ${home} home`)
-    symlinkSync(sourceDir, dest)
+    symlinkSync(real, dest, 'junction')
     return this.catalog({})
   }
 }

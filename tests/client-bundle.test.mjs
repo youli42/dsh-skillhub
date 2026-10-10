@@ -105,7 +105,7 @@ test('the client bundle loads, registers both slots, and renders its shells', ()
     '@deepseek-ai/dsh-client-ui-primitives': primitiveStub(surface, accessed),
   })
 
-  assert.equal(captured.id, 'dsh-skillhub')
+  assert.equal(captured.id, '@aa2246740/dsh-skillhub')
   assert.equal(captured.exports.name, 'dsh-skillhub-client')
   assert.deepEqual(captured.exports.inject, ['slots', 'locale', 'loader'])
   assert.equal(typeof captured.exports.apply, 'function')

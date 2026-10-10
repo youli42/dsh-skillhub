@@ -241,30 +241,43 @@ function posixRel(from: string, to: string): string {
 }
 
 function parseFrontmatter(text: string): { fields: Record<string, string>; body: string } | undefined {
-  // A leading BOM stays unhandled on purpose: `dsh-skill-filesystem` rejects it
-  // too, and listing a Skill the model cannot load would be a lie.
-  if (!text.startsWith('---')) return undefined
-  const end = text.indexOf('\n---', 3)
-  if (end < 0) return undefined
-  const raw = text.slice(3, end).replace(/^\r?\n/, '')
-  const body = text.slice(end + 4).replace(/^\r?\n/, '')
+  // Tolerate a UTF-8 BOM and CRLF line endings; match the closing fence in one
+  // pass so no stray `\r` is left on the last field line.
+  const match = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text)
+  if (match === null || match[1] === undefined) return undefined
+  const raw = match[1]
+  const body = text.slice(match[0].length)
   const fields: Record<string, string> = {}
-  // Split on every line break an editor may have written, and let the value
-  // pattern cross a stray CR: `text.slice(3, end)` ends at the `\n` of a CRLF
-  // closing delimiter and therefore keeps that `\r`, which `.` cannot match —
-  // the reason a Windows-authored SKILL.md used to lose its last field (usually
-  // `description`) and be reported as broken instead of listed.
-  for (const line of raw.split(/\r\n|\r|\n/)) {
-    const match = /^([A-Za-z0-9_-]+):[ \t]*([\s\S]*)$/.exec(line)
-    if (match === null || match[1] === undefined || match[2] === undefined) continue
-    let value = match[2].trim()
+  const lines = raw.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? ''
+    const keyMatch = /^([A-Za-z0-9_-]+):[ \t]*(.*)$/.exec(line)
+    if (keyMatch === null || keyMatch[1] === undefined || keyMatch[2] === undefined) continue
+    const key = keyMatch[1]
+    let value = keyMatch[2].trim()
+    // YAML block scalar (`|`, `>`, with optional chomping/indent indicators):
+    // gather the indented (or blank) continuation lines that follow.
+    const block = /^[|>][-+]?\d*(?:\s+#.*)?$/.exec(value)
+    if (block !== null) {
+      const collected: string[] = []
+      while (i + 1 < lines.length) {
+        const next = lines[i + 1] ?? ''
+        if (next.trim() !== '' && !/^\s/.test(next)) break
+        collected.push(next.trim())
+        i++
+      }
+      while (collected.length > 0 && collected[collected.length - 1] === '') collected.pop()
+      while (collected.length > 0 && collected[0] === '') collected.shift()
+      fields[key] = collected.join(' ')
+      continue
+    }
     if (
-      (value.startsWith('"') && value.endsWith('"'))
-      || (value.startsWith("'") && value.endsWith("'"))
+      (value.length >= 2 && value.startsWith('"') && value.endsWith('"'))
+      || (value.length >= 2 && value.startsWith("'") && value.endsWith("'"))
     ) {
       value = value.slice(1, -1)
     }
-    fields[match[1]] = value
+    fields[key] = value
   }
   return { fields, body }
 }

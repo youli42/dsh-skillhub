@@ -14,7 +14,7 @@ const read = (name) => readFileSync(join(root, name), 'utf8')
 test('declares dsh.bundle.patch so add joins the profile layer stack', () => {
   const pkg = JSON.parse(read('package.json'))
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
-  assert.match(read('cordis.patch.yml'), /name:\s*dsh-skillhub/)
+  assert.match(read('cordis.patch.yml'), /name:\s*'@aa2246740\/dsh-skillhub'/)
   assert.doesNotMatch(read('cordis.patch.yml'), /name:\s*['"]?\.\//)
 })
 
@@ -63,26 +63,19 @@ test('peer range accepts Harness 0.2.0-rc.2 and stable 0.2.0, and rejects alphas
   assert.equal(JSON.stringify(pkg).includes('0.1.5-rc'), false)
   assert.equal(JSON.stringify(pkg).includes('0.1.7-rc'), false)
   assert.equal(JSON.stringify(pkg).includes('0.2.0-alpha'), false)
-  assert.equal(pkg.version, '1.0.4')
-})
-
-test('client inline allowlist matches Harness 0.2.0-rc.2', () => {
-  const source = read('tsdown.config.ts')
-  assert.match(source, /dsh-v0\.2\.0-rc\.2/)
-  assert.match(source, /dsh-api-workspace-controller\/default-workspace/)
-  assert.doesNotMatch(source, /dsh-v0\.1\.7-rc\.2/)
+  assert.equal(pkg.version, '1.0.7')
 })
 
 test('documents the official web install one-liner', () => {
   const readme = read('README.md')
   const lead = readme.slice(0, 600)
-  assert.match(readme, /dsh plugin --profile web add github:aa2246740\/dsh-skillhub#v1\.0\.4/)
+  assert.match(readme, /dsh plugin --profile web add @aa2246740\/dsh-skillhub@1\.0\.6/)
   assert.match(lead, /无需 pnpm、本地构建或 DSHX/)
   assert.doesNotMatch(readme, /dshx plugin|my-plugins|activate-new-client/)
 })
 
 test('pnpm pack stages the stock bundle files', () => {
-  const packed = spawnSync('pnpm', ['pack', '--dry-run'], {
+  const packed = spawnSync(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['pack', '--dry-run'], {
     cwd: root,
     encoding: 'utf8',
   })

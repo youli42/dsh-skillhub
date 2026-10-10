@@ -4,17 +4,19 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const RUNTIME = process.env.DSHX_HARNESS
 if (!RUNTIME) throw new Error('Set DSHX_HARNESS for the real registry integration test')
-const SKILLHUB = new URL('../lib/types/', import.meta.url).pathname.replace(/\/$/, '')
+const harnessFile = path => pathToFileURL(join(RUNTIME, path)).href
+const SKILLHUB = new URL('../lib/types/', import.meta.url).href
 
 const { Context } = await import('@deepseek-ai/cordis')
-const SkillRegistry = (await import(`${RUNTIME}/packages/skill/skill/lib/index.js`)).default
-const SkillFileSystem = await import(`${RUNTIME}/packages/skill/skill-filesystem/lib/index.js`)
-const { createScope, scopeOf } = await import(`${RUNTIME}/packages/core/scope/lib/index.js`)
-const { SkillHub } = await import(`${SKILLHUB}/hub.js`)
-const { createSkillHubProvider } = await import(`${SKILLHUB}/provider.js`)
+const SkillRegistry = (await import(harnessFile('packages/skill/skill/lib/index.js'))).default
+const SkillFileSystem = await import(harnessFile('packages/skill/skill-filesystem/lib/index.js'))
+const { createScope, scopeOf } = await import(harnessFile('packages/core/scope/lib/index.js'))
+const { SkillHub } = await import(`${SKILLHUB}hub.js`)
+const { createSkillHubProvider } = await import(`${SKILLHUB}provider.js`)
 
 async function writeSkill(root, name) {
   const dir = join(root, name)

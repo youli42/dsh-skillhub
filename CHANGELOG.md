@@ -1,6 +1,30 @@
 # Changelog
 
-## Unreleased
+## 1.0.7
+
+### 修复
+
+- 修复 Windows/Linux 下技能面板半透明看不清：`.menu` 只画了约 50% 透明度的 `--dsw-specific-menu` 底色，macOS 靠系统毛玻璃撑着没暴露。改为独立的 `::before` 材质层承载 `backdrop-filter`（与官方 MenuSurface 同一做法），不再依赖原生 vibrancy。
+- 修复 Windows 下无管理员权限安装失败：`hub.install` 的目录链接改用 junction（不需要管理员/开发者模式）。
+- 测试套件 Windows 移植性：ESM 动态导入绝对路径改走 `pathToFileURL`、`pnpm` 在 win32 用 `pnpm.cmd`、probe 的 symlink 改 junction、README 断言对齐 1.0.6。
+
+### 说明
+
+- 插件市场（awesome-dsh-plugin 目录）中 `dsh-skillhub` 条目此前指向第三方 fork `vonweller/dsh-skillhub`（已分叉、停在 0.2.1），从市场安装拿不到本仓库代码——这是"装上后界面完全没有入口"类反馈的最可能根因。已提交目录 PR 将本仓库单独列出；市场安装请认准 `aa2246740/dsh-skillhub`。
+
+## 1.0.6
+
+- 发布通道切换为 npm Trusted Publishing（OIDC），推 `v*` tag 即发布；无功能变化。
+
+## 1.0.5
+
+- 修复 npm 包安装成功但 `skill&mcp` 页面缺失：包名、bundle 模块名和前端注册名统一为 `@aa2246740/dsh-skillhub`，GitHub 与 npm 使用同一份产物。
+- 安装说明补充桌面端「立即启用」步骤，避免把已安装误认为已启用。
+- 安装不再使用 npm 别名；旧用户通过插件管理器移除旧项后迁移，沿用 `$DSH_HOME/skillhub/` 中的开关数据。
+- 打包前检查三处名称一致，阻止发布缺失前端入口的产物；增加官方 RC2 加载器回归。
+- 客户端构建从包名生成注册 ID，并通过 DSHX 外部构建器读取目标平台模块表。
+
+## 1.0.4 补全刷新
 
 ### 新增
 

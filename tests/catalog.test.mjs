@@ -318,3 +318,37 @@ test('a CRLF SKILL.md keeps the field that sits last in its frontmatter', async 
   assert.equal(skill.whenToUse, 'always')
   assert.equal(skill.content.trim(), 'Body line.')
 })
+
+test('frontmatter: CRLF line endings keep the last field', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'skillhub-'))
+  const agent = join(root, 'agent')
+  const dsh = join(root, 'dsh')
+  await mkdir(join(agent, 'crlf'), { recursive: true })
+  await mkdir(dsh, { recursive: true })
+  await writeFile(join(agent, 'crlf', 'SKILL.md'), '---\r\nname: crlf\r\ndescription: hello world\r\n---\r\nbody\r\n')
+  const catalog = resolveCatalog({ agentHome: agent, dshHome: dsh })
+  assert.equal(catalog.broken.length, 0)
+  assert.deepEqual(catalog.offered.map(skill => [skill.name, skill.description]), [['crlf', 'hello world']])
+})
+
+test('frontmatter: block scalar descriptions are collected, not left as the indicator', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'skillhub-'))
+  const agent = join(root, 'agent')
+  const dsh = join(root, 'dsh')
+  const cases = [
+    ['literal', 'description: |\n  line one\n  line two\n', 'line one line two'],
+    ['folded', 'description: >\n  folded one\n  folded two\n', 'folded one folded two'],
+    ['strip', 'description: |-\n  strip me\n', 'strip me'],
+    ['crlf-literal', 'description: |\r\n  a\r\n  b\r\n', 'a b'],
+  ]
+  await mkdir(dsh, { recursive: true })
+  for (const [name, desc] of cases) {
+    await mkdir(join(agent, name), { recursive: true })
+    await writeFile(join(agent, name, 'SKILL.md'), `---\nname: ${name}\n${desc}---\nbody\n`)
+  }
+  const catalog = resolveCatalog({ agentHome: agent, dshHome: dsh })
+  assert.equal(catalog.broken.length, 0)
+  for (const [name, , expected] of cases) {
+    assert.equal(catalog.offered.find(skill => skill.name === name)?.description, expected, name)
+  }
+})
