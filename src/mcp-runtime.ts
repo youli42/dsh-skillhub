@@ -265,7 +265,7 @@ export function installMcpVisibility(
    * problem is a missing command or a file the project has not produced, and the
    * next event (a status change, a panel read) tries again once it clears. A
    * declaration that was attempted is remembered either way — a mount that failed
-   * keeps its reason and waits for the user's reload instead of retrying forever.
+   * keeps its reason instead of retrying forever.
    * @param agent - the session's agent, whose folder must already be known.
    */
   const autoStartApproved = (agent: Agent): void => {
@@ -348,6 +348,36 @@ export function installMcpVisibility(
       hash: variant.hash,
       dispose: async () => { try { await fiber.dispose() } catch { /* already gone */ } },
     })
+  }
+  /**
+   * Mount one chosen declaration and keep the records straight. An explicit start
+   * clears the user's stop and the previous failure, so the request is what
+   * decides; a rejection is recorded for the row while the approval stays,
+   * because trust is a statement about the command rather than about whether it
+   * happens to run right now.
+   *
+   * `mount` replaces an existing fiber for the same session and server itself, so
+   * a start cannot leave two of them behind.
+   * @returns the rendered command line for the response.
+   */
+  const startVariant = async (
+    agent: Agent,
+    server: string,
+    folder: string,
+    variant: ProjectMcpVariant,
+  ): Promise<string> => {
+    const key = mountKey(id(agent), server)
+    userStopped.delete(key)
+    startFailures.delete(key)
+    try {
+      await mount(agent, server, folder, variant)
+    } catch (error) {
+      startFailures.set(key, `Start failed: ${describeFailure(error)}`)
+      refresh()
+      throw error
+    }
+    refresh()
+    return renderVariant(variant)
   }
   const on = ctx.on.bind(ctx) as (event: string, fn: (...args: any[]) => void) => () => void
   const offChange = on('tools/change', refresh)
@@ -486,20 +516,11 @@ export function installMcpVisibility(
       const variant = source === undefined ? usable[0] : usable.find(entry => entry.source === source)
       if (variant === undefined) throw new Error(`No startable declaration for "${server}" from "${source ?? ''}"`)
       approveMcpServer(project.storeDir, folder, server, variant.source, variant.hash)
-      const key = mountKey(query.sessionId, server)
-      userStopped.delete(key)
-      try {
-        await mount(agent, server, folder, variant)
-      } catch (error) {
-        // The approval stays: trust is a statement about the command, not about
-        // whether it happens to run right now. The row explains the failure, and
-        // the next 启动 retries from there.
-        startFailures.set(key, `Start failed: ${describeFailure(error)}`)
-        refresh()
-        throw error
-      }
-      refresh()
-      return { ...catalog(query), started: server, variant: renderVariant(variant) }
+      // Mount before reading the catalog back: `catalog()` runs the automatic
+      // path itself, which would otherwise see a declaration that is approved and
+      // not mounted yet and start a second copy of this very server.
+      const rendered = await startVariant(agent, server, folder, variant)
+      return { ...catalog(query), started: server, variant: rendered }
     },
     /**
      * Unmount a server SkillHub started; the approval record stays, and the stop
