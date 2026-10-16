@@ -252,3 +252,53 @@ test('an approved declaration runs by itself when the session opens', async (t) 
   assert.equal(row.managed, true)
   assert.equal(tools.registered.size, 1, 'the unapproved declaration must stay down')
 })
+
+test('an approved declaration that is not runnable yet is attempted again once it clears', async (t) => {
+  const base = await mkdtemp(join(tmpdir(), 'skillhub-late-start-'))
+  const cwd = join(base, 'project')
+  await mkdir(cwd, { recursive: true })
+  const fixture = join(base, 'fixture-server.mjs')
+  await writeFile(fixture, FIXTURE)
+  // The bridge takes the editor's project file, which the project has not
+  // written yet: exactly the `./Project.uproject` declaration that cannot start
+  // until the editor has been opened once.
+  const project = join(cwd, 'Test_DreamShader.uproject')
+  await writeFile(join(cwd, '.mcp.json'), `${JSON.stringify({
+    mcpServers: { bridge: { command: process.execPath, args: [fixture, project] } },
+  }, null, 2)}\n`)
+
+  const storeDir = join(base, 'store')
+  const approved = readProjectMcp(cwd).servers.find(server => server.name === 'bridge').variants[0]
+  approveMcpServer(storeDir, cwd, 'bridge', approved.source, approved.hash)
+
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+  const tools = recordingTools()
+  ctx.provide('tools', tools)
+  const agent = { id: 'late-1', session: { id: 'late-1', header: { cwd } } }
+  agent.ctx = ctx
+  ctx.provide('agents', { list: () => [agent] })
+
+  const runtime = installMcpVisibility(ctx, new McpHub({ storeDir }), () => liveMcpServers(ctx), { storeDir })
+  runtime.attach(agent)
+  await new Promise(resolve => setTimeout(resolve, 200))
+
+  // Approved, but not startable: the missing argument is reported, nothing is
+  // spawned, and the session has not spent its chance on it.
+  const blocked = runtime.catalog({ layer: 'session', sessionId: 'late-1', folder: cwd })
+    .servers.find(server => server.name === 'bridge')
+  assert.equal(blocked.running, false)
+  assert.ok(
+    blocked.problems.some(problem => problem.includes('argument path does not exist')),
+    `the row should carry the blocking problem; saw ${JSON.stringify(blocked.problems)}`,
+  )
+  assert.equal(tools.registered.size, 0)
+
+  // The editor writes the file; the next read is the retry point.
+  await writeFile(project, '{}')
+  runtime.catalog({ layer: 'session', sessionId: 'late-1', folder: cwd })
+  assert.ok(
+    await waitFor(() => tools.registered.has('mcp__bridge__ping')),
+    `the cleared declaration should start on the next event; saw ${[...tools.registered.keys()].join(', ') || 'nothing'}`,
+  )
+})

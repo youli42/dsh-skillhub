@@ -140,9 +140,12 @@ export function installMcpVisibility(
   const agents = new Map<Agent, { lift: () => void; guard: () => void; signature: string; dispose: () => void }>()
   const mounted = new Map<string, Mounted>()
   /**
-   * Sessions whose approved declarations have already been started. One pass per
-   * session: a declaration added while the session is open is the panel's job,
-   * not something to keep re-scanning for on every event.
+   * Servers whose start already happened (or is in flight) in one session, so a
+   * later event cannot spawn the same service twice. Keyed per server: a
+   * session-wide flag spent the single chance even when the declaration was not
+   * startable yet — a command that only reaches PATH later, an argument file a
+   * tool creates later — which left the service unstarted for the rest of the
+   * session with no way back but a new chat.
    */
   const autoStarted = new Set<string>()
   /** Servers the user stopped, so entering again does not silently restart them. */
@@ -236,7 +239,9 @@ export function installMcpVisibility(
   /** Unmount everything this session started; the approval record stays. */
   const releaseAgent = async (sessionId: string | undefined): Promise<void> => {
     if (sessionId === undefined || sessionId === '') return
-    autoStarted.delete(sessionId)
+    for (const key of [...autoStarted]) {
+      if (key.startsWith(`${sessionId}\u0000`)) autoStarted.delete(key)
+    }
     for (const key of [...startFailures.keys()]) {
       if (key.startsWith(`${sessionId}\u0000`)) startFailures.delete(key)
     }
@@ -250,28 +255,36 @@ export function installMcpVisibility(
   /**
    * Start the approved declarations of this session's folder.
    *
-   * Runs once per session, in the background. `agent/created` is a serial event
-   * whose listeners are awaited before creation resolves while queued input
-   * waits, so this never blocks and never throws: an MCP handshake can take
-   * seconds and a broken declaration must not hold up the session. What went
-   * wrong is recorded instead, and the row shows it.
+   * Runs in the background. `agent/created` is a serial event whose listeners are
+   * awaited before creation resolves while queued input waits, so this never
+   * blocks and never throws: an MCP handshake can take seconds and a broken
+   * declaration must not hold up the session. What went wrong is recorded
+   * instead, and the row shows it.
+   *
+   * A declaration that is approved but not startable *yet* spends nothing: its
+   * problem is a missing command or a file the project has not produced, and the
+   * next event (a status change, a panel read) tries again once it clears. A
+   * declaration that was attempted is remembered either way — a mount that failed
+   * keeps its reason and waits for the user's reload instead of retrying forever.
    * @param agent - the session's agent, whose folder must already be known.
    */
   const autoStartApproved = (agent: Agent): void => {
     if (!autoStartEnabled || disposed) return
     const sessionId = id(agent)
-    if (sessionId === undefined || sessionId === '' || autoStarted.has(sessionId)) return
+    if (sessionId === undefined || sessionId === '') return
     const folder = identity(agent).folder
     if (folder === undefined || folder === '') return
-    autoStarted.add(sessionId)
     const declared = readDeclared(folder).servers
     const trust = trustOf(folder)
     for (const entry of declared) {
       const key = mountKey(sessionId, entry.name)
-      if (mounted.has(key) || userStopped.has(key) || startFailures.has(key)) continue
+      if (autoStarted.has(key) || mounted.has(key) || userStopped.has(key) || startFailures.has(key)) continue
       const variant = entry.variants.find(candidate =>
         !candidate.disabled && candidate.problems.length === 0 && isApproved(trust, candidate, entry.name))
       if (variant === undefined) continue
+      // Only an attempt spends the chance, and only here, before the async mount
+      // is in flight, so two events cannot spawn the same service.
+      autoStarted.add(key)
       void mount(agent, entry.name, folder, variant).then(() => { refresh() }).catch((error: unknown) => {
         const detail = describeFailure(error)
         startFailures.set(key, `Start failed: ${detail}`)
