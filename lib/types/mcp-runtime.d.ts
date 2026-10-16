@@ -78,6 +78,32 @@ export declare function installMcpVisibility(ctx: Context, hub: McpHub, discover
         declaredProblems: readonly string[];
         layer: import("./mcp.ts").McpLayer;
     }>;
+    /**
+     * Re-align one declared service with reality inside the session that is
+     * already open.
+     *
+     * A bridge server mounts as soon as it connects, which is long before the
+     * editor on the other end publishes a tool. The client re-lists only when the
+     * server announces `tools/list_changed`, so a server that never announces
+     * stays mounted with zero tools, and no event will ever fix it — waiting is
+     * not a recovery strategy, and the alternative used to be opening another
+     * chat. Reloading disposes the current fiber and mounts the declaration again,
+     * which is the only thing that picks such a tool list up.
+     *
+     * Nothing is approved here: only a declaration the user already approved and
+     * that is startable right now can be reloaded, so this cannot start a command
+     * nobody has seen.
+     * @param query - layer/session/folder selection.
+     * @param server - declared server name.
+     * @returns the refreshed catalog plus what happened.
+     */
+    reload(query: McpCatalogQuery, server: string): Promise<{
+        reloaded: string;
+        variant: string;
+        servers: McpServerView[];
+        declaredProblems: readonly string[];
+        layer: import("./mcp.ts").McpLayer;
+    }>;
 };
 export {};
 //# sourceMappingURL=mcp-runtime.d.ts.map
