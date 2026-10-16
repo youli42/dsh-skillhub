@@ -158,8 +158,11 @@ export function handleSkillHubHttp(
       }
       // Starting a declared project server mounts a `dsh-mcp-client` fiber in the
       // chat's own scope. It happens only here, and only after the user approves
-      // the exact declaration content in the panel.
-      if (path === '/mcp/start' || path === '/mcp/stop') {
+      // the exact declaration content in the panel. Reloading re-mounts a
+      // declaration that is already approved, inside the open chat: a bridge
+      // server that never announces `tools/list_changed` stays mounted with zero
+      // tools, and nothing else can pick that tool list up.
+      if (path === '/mcp/start' || path === '/mcp/stop' || path === '/mcp/reload') {
         if (!mcp) throw new Error('MCP visibility unavailable')
         if (typeof body['server'] !== 'string') throw new Error('server required')
         if (typeof body['sessionId'] !== 'string' || body['sessionId'] === '') throw new Error('sessionId required')
@@ -169,7 +172,9 @@ export function handleSkillHubHttp(
         const q: import('./mcp.ts').McpCatalogQuery = { ...(typeof layer === 'string' ? { layer } : {}), sessionId: body['sessionId'], ...(typeof body['folder'] === 'string' ? { folder: body['folder'] } : {}) }
         const result = path === '/mcp/start'
           ? await mcp.start(q, body['server'], typeof body['source'] === 'string' ? body['source'] : undefined)
-          : await mcp.stop(q, body['server'])
+          : path === '/mcp/reload'
+            ? await mcp.reload(q, body['server'])
+            : await mcp.stop(q, body['server'])
         send(res, 200, result)
         return
       }
@@ -239,7 +244,7 @@ export function handleSkillHubHttp(
       // readDoc/writeDoc paths — is an internal failure and answers 500.
       const message = String(error)
       const client = !/visibility document/i.test(message)
-        && /required|invalid|must be|not registered|no longer registered|not declared|Cannot fully hide|Cannot start/i.test(message)
+        && /required|invalid|must be|not registered|no longer registered|not declared|Cannot fully hide|Cannot start|Cannot reload/i.test(message)
       send(res, client ? 400 : 500, { error: message })
     }
   }

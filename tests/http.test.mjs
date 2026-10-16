@@ -108,7 +108,7 @@ test('MCP routes enforce authentication and validate writes before dispatch', as
   assert.equal(res.result.status,200);assert.equal(writes,1)
 })
 
-test('project MCP start and stop reach the runtime and answer client mistakes as 400', async () => {
+test('project MCP start, stop and reload reach the runtime and answer client mistakes as 400', async () => {
   const root = await mkdtemp(join(tmpdir(), 'skillhub-mcp-start-'))
   const hub = new SkillHub({ agentHome: join(root, 'agent'), dshHome: join(root, 'dsh'), storeDir: join(root, 'store') })
   const calls = []
@@ -122,6 +122,10 @@ test('project MCP start and stop reach the runtime and answer client mistakes as
     stop: async (query, server) => {
       calls.push({ kind: 'stop', query, server })
       return { servers: [] }
+    },
+    reload: async (query, server) => {
+      calls.push({ kind: 'reload', query, server })
+      return { servers: [], reloaded: server }
     },
   }
   const handle = handleSkillHubHttp(hub, () => {}, () => undefined, mcp)
@@ -155,17 +159,37 @@ test('project MCP start and stop reach the runtime and answer client mistakes as
     server: 'ue-mcp',
   })
 
+  // Reloading re-mounts an approved declaration inside the chat that is already
+  // open: the only way to pick up a bridge that never announces its tool list.
+  const reloaded = response()
+  await handle(request('/skillhub/mcp/reload', {
+    layer: 'session', sessionId: 's1', folder: root, server: 'ue-mcp',
+  }), reloaded)
+  assert.equal(reloaded.result.status, 200)
+  assert.deepEqual(calls[2], {
+    kind: 'reload',
+    query: { layer: 'session', sessionId: 's1', folder: root },
+    server: 'ue-mcp',
+  })
+  assert.equal(JSON.parse(reloaded.result.body).reloaded, 'ue-mcp')
+
   // A refused start is the user's mistake, not a Host failure.
   const refusing = handleSkillHubHttp(hub, () => {}, () => undefined, {
     catalog: () => ({ servers: [] }),
     mutate: () => ({ servers: [] }),
     start: async () => { throw new Error('MCP service "ue-mcp" is not declared in this project') },
     stop: async () => ({ servers: [] }),
+    reload: async () => { throw new Error('Cannot reload "ue-mcp": no approved, startable declaration') },
   })
   const refused = response()
   await refusing(request('/skillhub/mcp/start', { layer: 'session', sessionId: 's1', server: 'ue-mcp' }), refused)
   assert.equal(refused.result.status, 400)
   assert.match(JSON.parse(refused.result.body).error, /not declared/)
+
+  const reloadRefused = response()
+  await refusing(request('/skillhub/mcp/reload', { layer: 'session', sessionId: 's1', server: 'ue-mcp' }), reloadRefused)
+  assert.equal(reloadRefused.result.status, 400)
+  assert.match(JSON.parse(reloadRefused.result.body).error, /Cannot reload/)
 })
 
 test('a corrupted store answers 500 while client mistakes stay 400', async () => {

@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
+import { McpHub } from '../lib/types/mcp.js'
+import { installMcpVisibility, liveMcpServers } from '../lib/types/mcp-runtime.js'
+import { approveMcpServer, readProjectMcp } from '../lib/types/project-mcp.js'
 
 /**
  * A declared project server is typically a bridge: `npx ue-mcp <project>` is up
@@ -22,14 +25,21 @@ import * as McpClient from '@deepseek-ai/dsh-mcp-client'
  * test proves a re-mount against a ready server actually closes the gap.
  */
 const FIXTURE = `
-let tools = []
+import { existsSync } from 'node:fs'
+
 let buffer = ''
+let published = false
 const notify = process.argv[2] === '1'
-const ready = process.argv[3] === '1'
-if (ready) tools = [{ name: 'ping', description: 'Reply pong', inputSchema: { type: 'object', properties: {} } }]
+const staticReady = process.argv[3] === '1'
+const ping = { name: 'ping', description: 'Reply pong', inputSchema: { type: 'object', properties: {} } }
+// A bridge serves tools only while the editor on the other end is up, so
+// readiness is decided per request rather than at startup. 'editor-ready' is
+// resolved against the cwd SkillHub passes, which is the session folder.
+const ready = () => staticReady || published || existsSync('editor-ready')
+const list = () => ready() ? [ping] : []
 const send = (message) => { process.stdout.write(JSON.stringify(message) + '\\n') }
 const publish = () => {
-  tools = [{ name: 'ping', description: 'Reply pong', inputSchema: { type: 'object', properties: {} } }]
+  published = true
   if (notify) send({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' })
 }
 const handle = (message) => {
@@ -42,11 +52,11 @@ const handle = (message) => {
     return
   }
   if (message.method === 'notifications/initialized' || message.method === 'initialized') {
-    if (!ready) setTimeout(publish, 600)
+    if (!staticReady) setTimeout(publish, 600)
     return
   }
   if (message.method === 'tools/list') {
-    send({ jsonrpc: '2.0', id: message.id, result: { tools } })
+    send({ jsonrpc: '2.0', id: message.id, result: { tools: list() } })
     return
   }
   if (message.method === 'tools/call') {
@@ -163,4 +173,90 @@ test('a re-mount against a ready server picks the tools up', async (t) => {
     await waitFor(() => second.tools.registered.has('mcp__probe__ping')),
     'a fresh mount is what a silent server needs',
   )
+})
+
+test('a reload inside the open session picks up the tools a silent bridge starts serving later', async (t) => {
+  const base = await mkdtemp(join(tmpdir(), 'skillhub-reload-'))
+  const cwd = join(base, 'project')
+  await mkdir(cwd, { recursive: true })
+  const fixture = join(base, 'fixture-server.mjs')
+  await writeFile(fixture, FIXTURE)
+  // Silent server: it answers `tools/list` and never announces a change.
+  await writeFile(join(cwd, '.mcp.json'), `${JSON.stringify({
+    mcpServers: { bridge: { command: process.execPath, args: [fixture, '0', '0'] } },
+  }, null, 2)}\n`)
+
+  const storeDir = join(base, 'store')
+  const approved = readProjectMcp(cwd).servers.find(server => server.name === 'bridge').variants[0]
+  approveMcpServer(storeDir, cwd, 'bridge', approved.source, approved.hash)
+
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+  const tools = recordingTools()
+  ctx.provide('tools', tools)
+  const agent = { id: 'reload-1', session: { id: 'reload-1', header: { cwd } } }
+  agent.ctx = ctx
+  ctx.provide('agents', { list: () => [agent] })
+
+  const runtime = installMcpVisibility(ctx, new McpHub({ storeDir }), () => liveMcpServers(ctx), { storeDir })
+  runtime.attach(agent)
+
+  // Mounted, healthy and empty: the bridge is up before the editor is, and
+  // `failOnStartupError` accepts that as a start.
+  assert.ok(await waitFor(() => liveMcpServers(ctx).includes('bridge')))
+  const before = runtime.catalog({ layer: 'session', sessionId: 'reload-1', folder: cwd })
+    .servers.find(server => server.name === 'bridge')
+  assert.equal(before.running, true)
+  assert.equal(before.managed, true)
+  assert.equal(before.tools, 0)
+  assert.equal(tools.registered.size, 0)
+
+  // The editor comes up. This bridge never announces its list, so waiting is not
+  // a recovery strategy - and a new chat was the only way out before.
+  await writeFile(join(cwd, 'editor-ready'), '')
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  assert.equal(tools.registered.size, 0)
+
+  const reloaded = await runtime.reload({ layer: 'session', sessionId: 'reload-1', folder: cwd }, 'bridge')
+  assert.equal(reloaded.reloaded, 'bridge')
+  assert.ok(
+    await waitFor(() => tools.registered.has('mcp__bridge__ping')),
+    `the reload should pick the tool up; saw ${[...tools.registered.keys()].join(', ') || 'nothing'}`,
+  )
+  // The replaced fiber is not stacked on top of the old one.
+  assert.deepEqual(liveMcpServers(ctx), ['bridge'])
+  assert.equal(
+    runtime.catalog({ layer: 'session', sessionId: 'reload-1', folder: cwd })
+      .servers.find(server => server.name === 'bridge').tools,
+    1,
+  )
+})
+
+test('a reload refuses a declaration the user has not approved', async (t) => {
+  const base = await mkdtemp(join(tmpdir(), 'skillhub-reload-untrusted-'))
+  const cwd = join(base, 'project')
+  await mkdir(cwd, { recursive: true })
+  const fixture = join(base, 'fixture-server.mjs')
+  await writeFile(fixture, FIXTURE)
+  await writeFile(join(cwd, '.mcp.json'), `${JSON.stringify({
+    mcpServers: { bridge: { command: process.execPath, args: [fixture, '1', '1'] } },
+  }, null, 2)}\n`)
+
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+  const tools = recordingTools()
+  ctx.provide('tools', tools)
+  const agent = { id: 'untrusted-1', session: { id: 'untrusted-1', header: { cwd } } }
+  agent.ctx = ctx
+  ctx.provide('agents', { list: () => [agent] })
+
+  // No approval record for this folder: reload must not become a start path that
+  // skips the panel's confirmation.
+  const runtime = installMcpVisibility(ctx, new McpHub({ storeDir: join(base, 'store') }), () => liveMcpServers(ctx), { storeDir: join(base, 'store') })
+  runtime.attach(agent)
+  await assert.rejects(
+    () => runtime.reload({ layer: 'session', sessionId: 'untrusted-1', folder: cwd }, 'bridge'),
+    /Cannot reload "bridge"/,
+  )
+  assert.equal(tools.registered.size, 0)
 })

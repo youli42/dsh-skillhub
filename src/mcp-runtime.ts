@@ -265,7 +265,7 @@ export function installMcpVisibility(
    * problem is a missing command or a file the project has not produced, and the
    * next event (a status change, a panel read) tries again once it clears. A
    * declaration that was attempted is remembered either way — a mount that failed
-   * keeps its reason instead of retrying forever.
+   * keeps its reason and waits for the user's reload instead of retrying forever.
    * @param agent - the session's agent, whose folder must already be known.
    */
   const autoStartApproved = (agent: Agent): void => {
@@ -351,13 +351,13 @@ export function installMcpVisibility(
   }
   /**
    * Mount one chosen declaration and keep the records straight. An explicit start
-   * clears the user's stop and the previous failure, so the request is what
-   * decides; a rejection is recorded for the row while the approval stays,
+   * or reload clears the user's stop and the previous failure, so the request is
+   * what decides; a rejection is recorded for the row while the approval stays,
    * because trust is a statement about the command rather than about whether it
    * happens to run right now.
    *
    * `mount` replaces an existing fiber for the same session and server itself, so
-   * a start cannot leave two of them behind.
+   * a reload cannot leave two of them behind.
    * @returns the rendered command line for the response.
    */
   const startVariant = async (
@@ -536,6 +536,49 @@ export function installMcpVisibility(
       }
       refresh()
       return catalog(query)
+    },
+    /**
+     * Re-align one declared service with reality inside the session that is
+     * already open.
+     *
+     * A bridge server mounts as soon as it connects, which is long before the
+     * editor on the other end publishes a tool. The client re-lists only when the
+     * server announces `tools/list_changed`, so a server that never announces
+     * stays mounted with zero tools, and no event will ever fix it — waiting is
+     * not a recovery strategy, and the alternative used to be opening another
+     * chat. Reloading disposes the current fiber and mounts the declaration again,
+     * which is the only thing that picks such a tool list up.
+     *
+     * Nothing is approved here: only a declaration the user already approved and
+     * that is startable right now can be reloaded, so this cannot start a command
+     * nobody has seen.
+     * @param query - layer/session/folder selection.
+     * @param server - declared server name.
+     * @returns the refreshed catalog plus what happened.
+     */
+    async reload(query: McpCatalogQuery, server: string) {
+      if (project === undefined) throw new Error('Project MCP support is not enabled')
+      const agent = agentFor(query.sessionId)
+      if (agent === undefined) throw new Error('An open chat is required to reload a project MCP service')
+      const folder = identity(agent).folder
+      if (folder === undefined || folder === '') throw new Error('A workspace folder is required to reload a project MCP service')
+      const declared = readDeclared(folder).servers.find(entry => entry.name === server)
+      if (declared === undefined) throw new Error(`MCP service "${server}" is not declared in this project`)
+      const trust = trustOf(folder)
+      const variant = declared.variants.find(candidate =>
+        !candidate.disabled && candidate.problems.length === 0 && isApproved(trust, candidate, server))
+      if (variant === undefined) {
+        const detail = declaredProblems(declared).join('; ')
+        throw new Error(`Cannot reload "${server}": ${detail === '' ? 'no approved, startable declaration' : detail}`)
+      }
+      // The automatic path gave up on this server when it attempted it, so a
+      // reload has to be able to try again. The attempt marker itself is left in
+      // place: the reload mounts directly, and keeping it stops the automatic path
+      // from racing this call for the same server.
+      const key = mountKey(query.sessionId, server)
+      startFailures.delete(key)
+      const rendered = await startVariant(agent, server, folder, variant)
+      return { ...catalog(query), reloaded: server, variant: rendered }
     },
   }
 }
