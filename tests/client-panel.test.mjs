@@ -176,6 +176,15 @@ test('the composer popover renders project Skills, a declared MCP service, and t
           ],
           problems: ['mcp-json: argument path does not exist: E:\\gone\\Test_DreamShader.uproject'],
         },
+      // Mounted, healthy and empty: the bridge is up before the editor on the
+      // other end is, which is a normal state rather than a failure.
+      ...(started ? [{
+        name: 'ue-bridge', tools: 0, gate: 'on', source: 'global', running: true, declared: true, managed: true, supported: true,
+        variants: [
+          { source: 'mcp-json', transport: 'stdio', command: 'npx ue-mcp ./Project_Wall.uproject', approved: true, startable: true, problems: [] },
+        ],
+        problems: [],
+      }] : []),
       {
         name: 'no-runner', tools: 0, gate: 'off', source: 'global', running: false, declared: true, managed: false, startRequired: true, supported: true,
         variants: [
@@ -213,7 +222,8 @@ test('the composer popover renders project Skills, a declared MCP service, and t
     calls.push({ url: target, body: init?.body === undefined ? undefined : JSON.parse(init.body) })
     const payload = target.includes('/mcp/catalog') ? mcpCatalog('session')
       : target.includes('/mcp/start') ? mcpCatalog('session', true)
-        : catalog('session')
+        : target.includes('/mcp/reload') ? mcpCatalog('session', true)
+          : catalog('session')
     return new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } })
   }
 
@@ -358,4 +368,19 @@ test('the composer popover renders project Skills, a declared MCP service, and t
   assert.equal(startedSwitch.disabled, false)
   assert.equal(startedSwitch.getAttribute('aria-checked'), 'true')
   assert.match(startedRow.textContent, /Stop/)
+
+  // Waiting is not a recovery strategy for a bridge that never announces its tool
+  // list, so the row that is mounted with nothing to serve must say so and offer
+  // the reload that re-mounts it.
+  const bridgeRow = [...startedRow.querySelectorAll('[data-leaf]')]
+    .find(row => row.textContent?.includes('ue-bridge'))
+  assert.ok(bridgeRow !== undefined, 'the mounted bridge should have a row')
+  assert.match(bridgeRow.textContent, /Connected, but the other end serves no tools yet/)
+  const reload = [...bridgeRow.querySelectorAll('button')].find(button => button.textContent === 'Reload')
+  assert.ok(reload !== undefined, 'a mounted bridge with no tools should offer a reload')
+  assert.equal(reload.disabled, false)
+  await act(async () => { reload.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
+  const reloaded = calls.find(call => call.url.includes('/mcp/reload'))
+  assert.ok(reloaded !== undefined, 'reloading should call the reload route')
+  assert.deepEqual(reloaded.body, { layer: 'session', sessionId: 's1', folder: CWD, server: 'ue-bridge' })
 })

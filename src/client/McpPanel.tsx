@@ -134,7 +134,7 @@ export function McpPanel(props: McpPanelProps) {
       notifyCatalogChanged(layer)
     }
   }
-  const runLifecycle = async (path: 'start' | 'stop', server: string, source?: string) => {
+  const runLifecycle = async (path: 'start' | 'stop' | 'reload', server: string, source?: string) => {
     if (pending.current) return
     pending.current = true
     ++generation.current
@@ -242,10 +242,20 @@ export function McpPanel(props: McpPanelProps) {
               {(server.problems?.length ?? 0) > 0 ? <ul className={css.problems}>
                 {(server.problems ?? []).map(problem => <li key={problem}>{problem}</li>)}
               </ul> : null}
+              {/* A bridge connects long before the editor on the other end serves
+                  a tool, so "mounted with zero tools" is a normal state rather
+                  than a failure - and only re-mounting picks that list up. */}
+              {server.declared && server.running && server.managed && server.tools === 0
+                ? <p className={css.warn} role="status">{t('mcp.noTools')} — {t('mcp.noTools.hint')}</p> : null}
             </div>
             <div className={css.actions}>
               {server.declared ? (server.running && server.managed
-                ? <Button variant="outline" size="sm" disabled={busy} onClick={() => void runLifecycle('stop', server.name)}>{t('mcp.stop')}</Button>
+                ? <>
+                  <Button variant="outline" size="sm" disabled={busy}
+                    onClick={() => void runLifecycle('reload', server.name)}>{t('mcp.reload')}</Button>
+                  <Button variant="outline" size="sm" disabled={busy}
+                    onClick={() => void runLifecycle('stop', server.name)}>{t('mcp.stop')}</Button>
+                </>
                 : <Button variant="outline" size="sm" disabled={busy || !layerReady || !startable}
                   onClick={() => primaryAction(server)}>{trusted ? t('mcp.start') : t('mcp.trust')}</Button>) : null}
               <GateSwitch
