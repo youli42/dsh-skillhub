@@ -54,19 +54,34 @@ process.stdin.on('data', (chunk) => {
 process.stdin.resume()
 `
 
-/** Records every tool registration, which is all that is visible from the mount. */
+/**
+ * Records every tool registration plus the visibility calls SkillHub makes, so
+ * hiding a service is asserted on the deny list and the guard SkillHub installs.
+ * No-op stubs for both swallowed those calls, which let this test pass while
+ * proving nothing about hiding.
+ */
 function recordingTools() {
   const registered = new Map()
+  const restrictions = []
+  const guards = []
   return {
     registered,
+    restrictions,
+    guards,
     schemas: () => [...registered.values()].map(entry => entry.definition),
     get: name => registered.get(name)?.definition,
     register: (definition) => {
       registered.set(definition.name, { definition })
       return () => { registered.delete(definition.name) }
     },
-    restrict: () => () => {},
-    guard: () => () => {},
+    restrict: (options) => {
+      restrictions.push(options)
+      return () => {}
+    },
+    guard: (callback) => {
+      guards.push(callback)
+      return () => {}
+    },
   }
 }
 
@@ -128,10 +143,20 @@ test('the real mcp-client mounts a SkillHub-started server and unregisters it on
   // Once it runs, the switch reports the stored visibility again.
   assert.equal(live.startRequired, undefined)
   assert.equal(live.gate, 'on')
+  // The guard a running service installs lets its tool through while it is on.
+  assert.equal(tools.guards.length, 1)
+  assert.equal(tools.guards[0]({ name: 'mcp__probe__ping' }), undefined)
 
   // A SkillHub-owned scope-local service is hideable, and hiding it denies the tool.
   const hidden = runtime.mutate({ layer: 'session', sessionId: 's1', folder: cwd }, 'probe', false)
   assert.equal(hidden.servers.find(server => server.name === 'probe').gate, 'off')
+  // Hiding has to reach the host as a deny list, and the guard has to refuse the
+  // tool while that gate is off; both used to be recorded by a stub and dropped.
+  assert.deepEqual(tools.restrictions.at(-1).deny, ['mcp__probe__ping'])
+  assert.equal(
+    tools.guards[0]({ name: 'mcp__probe__ping' }),
+    'This MCP service is hidden by SkillHub for this session.',
+  )
 
   await runtime.stop({ layer: 'session', sessionId: 's1', folder: cwd }, 'probe')
   assert.ok(
