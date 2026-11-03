@@ -38,6 +38,13 @@
   gap: 8px;
 }
 
+.menu > .root[data-surface='popover'] {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+}
+
 /* Composer chip -------------------------------------------------------- */
 
 .chipWrap {
@@ -110,6 +117,11 @@
   display: flex;
   flex-direction: column;
   max-width: calc(100vw - 24px);
+  /* One frame for both tabs. 100px is the single-row chrome around the list
+     (border, padding, toolbar, the Skills search row, and the gaps between
+     them). MCP has no search row, and a narrow toolbar can wrap; either one
+     used to change this box. The list fills what remains. Settings has no .menu. */
+  height: min(640px, calc(100vh - 24px), calc(min(480px, 60vh) + 100px));
   max-height: min(640px, calc(100vh - 24px));
   overflow: hidden;
   border-radius: 12px;
@@ -251,7 +263,16 @@
 
 .root[data-surface='popover'] .body,
 .root[data-surface='popover'] .mcpBody {
-  max-height: min(480px, 60vh);
+  flex: 1 1 0;
+  height: auto;
+  overflow-y: auto;
+}
+
+/* The popover list fills the shared frame. Let an empty card fill that list
+   and stay centered; the page surface keeps the content-sized card. */
+.root[data-surface='popover'] .emptyCard {
+  flex: 1 1 auto;
+  margin-block: 0;
 }
 
 .error,

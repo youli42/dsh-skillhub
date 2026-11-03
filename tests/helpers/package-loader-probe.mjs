@@ -76,4 +76,4 @@ try {
 } finally {
   await rm(fixture, { recursive: true, force: true })
 }
-console.log(JSON.stringify({ version: pkg.version, harness: '0.2.0-rc.2', results }))
+console.log(JSON.stringify({ version: pkg.version, harness: '0.2.1-rc.5', results }))

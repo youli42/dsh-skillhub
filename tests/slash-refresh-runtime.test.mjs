@@ -57,6 +57,7 @@ async function bench(t) {
   ctx.provide('sidebarRight', { openResource() {} })
   ctx.provide('locale', { register: () => () => {}, bind: () => key => key })
   ctx.provide('slots', { inject: (_name, run) => run(), register: () => () => {} })
+  ctx.provide('uiConversation', { userText: { register: () => () => {} } })
   await ctx.plugin(InputTriggerService)
   await ctx.plugin(Loader)
   let unrelatedMounts = 0
