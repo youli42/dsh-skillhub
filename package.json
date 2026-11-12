@@ -4,7 +4,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "DSH manager for user Skills already on disk in Agent home and DSH home",
+  "description": "DeepSeek Harness plugin for on-disk and project Skills, plus MCP service visibility and declared-server control",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/aa2246740/dsh-skillhub.git"
@@ -17,7 +17,9 @@
     "deepseek-harness",
     "dsh-plugin",
     "skills",
+    "project-skills",
     "mcp",
+    "declared-mcp",
     "cordis"
   ],
   "type": "module",

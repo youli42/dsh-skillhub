@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: SkillHub
-description: Native DSH viewer for skills already on disk in Agent home and DSH home
+description: Native DSH viewer for on-disk and project Skills, plus MCP visibility and declared-server control
 colors:
   primary: "var(--dsw-static-deepseek-450)"
   surface: "var(--dsw-alias-bg-overlay)"
@@ -81,6 +81,8 @@ It lives in two seats: a settings page for Global Defaults and a composer chip f
 The tree is the product. Effective Visibility resolves Chat → Project → Global. Project and Chat store sparse overrides and expose Follow parent; Global owns the base default, including future Skills. Folders are the other axis: home, origin pack, author group, and nested skill each switch every skill inside. When a home entry is a symlink whose real path sits under `<origin>/skills/...`, SkillHub rebuilds that author tree. Expand a folder to switch one child. Off is a switch, not delete.
 
 Project roots are their own home sections, labelled by folder name. `.opencode` and `.claude` carry a `SkillHub only` tag because DSH itself never reads them; `.agents` does not, because DSH reads that root too. Project roots appear only in the composer panel's Project and Chat scopes — a Global read has no folder and shows no project section. One level deep, matching what the model can actually load.
+
+MCP is the second tab. A running service switches per scope like a Skill. A project-declared service is a row before it is a process: the row shows its exact command line and every problem that would stop it, and it starts only after the user acknowledges that command. A started bridge with no tools yet offers Reload, because the host re-lists only on `tools/list_changed` and waiting cannot fix it. SkillHub never edits the declaration files.
 
 ## Colors
 
@@ -341,3 +343,4 @@ Composer chip and layer segments use pill 18px. The popover and dialogs use 12px
 | 0.7 | 2026-08-21 | Host locale zh/en dictionaries | SkillHub chrome follows DSH language | agent |
 | 0.8 | 2026-08-21 | One switch per skill; cluster flattened pstack-* ; quieter badges | User: too many switches, messy tree | agent |
 | 0.9 | 2026-10-02 | Project roots as their own home sections; declared project MCP rows with command lines and a trust confirmation | User: manage the workspace's `.agents` / `.opencode` / `.claude` skills and its `.mcp.json` MCP | agent |
+| 0.10 | 2026-11-13 | Overview now states the MCP tab contract (declared rows, trust, Reload); frontmatter description covers project Skills and MCP | Doc refresh for the `youli-main` branch | agent |

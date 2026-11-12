@@ -1,10 +1,50 @@
 # Changelog
 
-## 1.0.9
+## 1.0.9（youli-main 分支，未发布）
+
+本版本基于上游 1.0.8，并合入上游待发布的 1.0.9 弹出框修复；此外在 fork 的 `youli-main` 分支上加入项目技能、项目声明的 MCP 与配套修复。尚未发布到 npm。
+
+### 新增
+
+- **项目技能**：按当前工作目录读取 `.agents/skills`、`.opencode/skills`、`.claude/skills`（一层深，与官方 `dsh-skill-filesystem` 的发现规则一致），在输入框面板的「本项目 / 本对话」层开关；设置页不显示。候选 rank 90/91/92（Agent 作用域再 −2），低于官方项目根的 100/200，因此关闭一个项目技能时官方 provider 无法把它重新填回目录；Off 仍以「抢到名字 + invocation=false」表达，绝不删除文件。`.opencode` / `.claude` 只由本插件供给模型，面板标注「仅 SkillHub」。可在配置里用 `projectSkillRoots` 调整或清空。
+- **项目声明的 MCP**：解析 `.mcp.json`（`mcpServers`）与 `.opencode/opencode.json`（`mcp`，`local` / `remote`），在 MCP 页签列出未运行的服务、每个来源的完整命令行，以及无法启动的具体原因（命令不在 PATH、参数路径不存在、名字不合法、`enabled: false` 等）。启动必须经面板「信任并启动」确认，批准记录按目录写入 `$DSH_HOME/skillhub/mcp-trust/<folderHash>.json` 并绑定声明内容的哈希——改过 `command`/`args`/`env`/`url`/`headers` 后需要重新确认。启动以**本对话作用域**挂载 `@deepseek-ai/dsh-mcp-client`（与 ACP 桥接同一做法），`cwd` 为会话目录，随 agent 释放；同一个名字在两个文件里都声明时合并为一行、分别显示各自命令行。SkillHub 自己挂载的服务被视为可完整隐藏，不受「scope-local 工具」限制。
+- **信任后自动启动**：已经确认过的声明（同一目录 + 同一份声明内容）在**进入该工程的会话时由 SkillHub 自动启动**，不再需要每次手点。自动启动在后台发起：`agent/created` 是 serial 事件且会阻塞会话创建，所以它不阻塞、不抛错，失败只在日志里记一行、并在该行下面显示原因。`agent/created` 时若工作目录尚未就绪，会在该会话第一次进入运行状态或面板读取时补一次。用户在会话里点「停止」后，本次会话不会再自动拉起；改过声明则需要重新确认。可用配置 `autoStartTrustedMcp: false` 保留信任但不自动启动。
+- 新增 ADR `docs/adr/0009-project-roots-and-declared-mcp.md`（部分取代 ADR 0001），并在 `CONTEXT.md` 补充 Project root / Project home / MCP declaration / Trust 词条。
+- 新增测试：`tests/project-skills.test.mjs`（项目根、一层深、rank、赢家规则）、`tests/project-mcp.test.mjs`（声明解析、路径/命令诊断、信任哈希）、`tests/project-mcp-runtime.test.mjs`（declared 行合并、启动装配与作用域、managed 可隐藏）、`tests/registry-integration.test.mjs`（真实 `@deepseek-ai/dsh-skill` 注册表 + `createScope` 复现 Web 拓扑，验证 rank 88/90 压过官方 100/200/400/500 且 Off 不被回填）、`tests/plugin-entry.test.mjs`（走真实 `Config`/`apply`，验证路由、项目 home 载荷、declared MCP、以及 toggle 写盘后经 invalidate 让注册表把技能判为不可调用）、`tests/client-bundle.test.mjs`（按 Web 模块加载器加载 `lib/client.js`，对照宿主 primitives 的真实导出表，验证两个 slot 注册、i18n 字典、外壳渲染，以及新行用到的 class 确实存在于生成的样式表）、`tests/client-panel.test.mjs`（jsdom + 真实 effect 渲染输入框面板：项目根标签与「仅 SkillHub」标记、declared MCP 行与命令行/问题、无法启动的标记，以及「信任并启动」从勾选到发出 `/mcp/start` 请求体的完整交互）、`tests/mcp-mount.test.mjs`（用真实 `@deepseek-ai/dsh-mcp-client` 连接一个真实的 stdio MCP 子进程，验证经 `start()` 后工具真的注册为 `mcp__probe__ping`、`running/managed` 状态、可隐藏，以及 `stop()` 会注销工具并回收子进程；另外验证宿主自己会拒绝非法 `serverName`；以及"已批准的声明在 attach 时自动启动、未批准的不启动"）。
+
+### 界面
+
+- 项目声明但**尚未启动**的 MCP 服务，右侧开关显示为**关且不可点**：此前它按全局默认显示成「开」，可进程根本没起来，等于告诉用户这个服务是开的。启动之后开关恢复显示真实的可见性取值；「全部开启 / 全部关闭」也只作用于当前真实存在的服务，不会把状态写进一个还没跑起来的服务里。
+- MCP 页签顶部标出**声明来源目录的目录名**（完整路径在悬停提示里），并且已经记录过信任的服务行会显示「信任已记录」标签。信任是**按目录记录、并且绑定到某一条声明内容**的：同名的服务在另一个工程里就是另一个目录、另一条命令行，需要各自确认；之前面板不显示这两件事，所以换工程时会误以为「信任没记住」。
+- 输入框弹出面板在「只有一个 home 有技能」时不再收起 home 头部，前提是那一个是项目根：`.opencode` / `.claude` 的技能只由本插件供给模型，这个标签是用户唯一的提示。（只涉及 popover；设置页与纯用户目录的场景行为不变。）
+- **运行中但工具为 0 的挂载行现在有出口**：桥接型服务（如 `npx ue-mcp <project>`）在编辑器起来之前就能握手成功，于是一行显示「运行中」却一个工具都没有——`failOnStartupError` 只看握手，这属于正常启动。这类行现在写明「已连接，但对端尚未提供工具」，并给出**「重新加载」**按钮：卸载当前 fiber，再按同一份已批准的声明挂载一次。宿主只在服务主动发 `tools/list_changed` 时重新拉取工具列表，桥接服务通常不发，所以等待不会自愈，重新挂载是唯一手段（此前只能开一个新会话）。
 
 ### 修复
 
-- 对话里的技能面板在 Skills 与 MCP 之间切换时，整个弹出框的高度保持不变。弹出框按视口定高（单行工具栏时列表区仍是 `min(480px, 60vh)`），Skills 的搜索行和窄屏下多出来的工具栏行都改占列表空间，不再把外框撑高或压矮。内容超出时在列表内滚动；设置页仍按内容高度排。
+- **运行中的会话挂载服务不再显示「0 个工具」**：面板工具计数只读全局工具层（宿主 `tools.schemas()` 无参视图），而 SkillHub 按本对话作用域挂载的 `@deepseek-ai/dsh-mcp-client` 把 `mcp__<name>__*` 注册进会话作用域层，全局视图里没有这些名字，于是每个已启动的挂载行都显示 0 个工具。现在 catalog 计数把当前会话作用域注册的工具名并入统计（与 `problematic()` 同款读取，代理销毁时安全返回空）；设置页（无会话）保持全局视图；对已声明未启动行的 `tools: 0` 与 `refresh()` 的 deny 路径无影响。
+- **MCP 启动失败不再伪装成"已启动、0 工具"**：之前 `failOnStartupError: false`，服务连不上时插件照样激活，于是那行会显示成已启动却一个工具都没有，原因只在 Host 日志里。现在 SkillHub 自己挂载的服务一律 `failOnStartupError: true`——激活本身就等首连与工具发现，失败即拒绝，行上出现「启动失败」标签和具体原因（含 `cause` 链，如 `spawn npx ENOENT`），并且不会留下任何 fiber。顺带修掉一个更隐蔽的问题：被拒绝的激活仍会在 Cordis 注册表里留下一个 fiber（连同 config），旧代码据此把它算成"在跑"；现在 `liveMcpServers` 只认 `ACTIVE`（state=2）的 fiber。信任记录在失败后保留（信任是对命令的表态，不是对当下能否启动的表态），点「启动」即可重试，成功后失败提示自动消失。
+- **CRLF 的 SKILL.md 会丢掉最后一个 frontmatter 字段**：截取 frontmatter 时切片停在闭合分隔符的 `\n` 上，于是保留了一个 `\r`，而字段行的 `(.*)$` 无法跨过 `\r`——Windows 上写的技能（最后一个字段常常正是 `description`）会被判成 `invalid-frontmatter`，整条技能不显示。现在按 `\r\n` / `\r` / `\n` 三种换行切行，字段值用可跨 `\r` 的模式并 `trim()`。这个 bug 同时影响用户目录里的技能，不只是项目技能；真机检查时 `D:\SSDWP\UE\Test_DreamShader\.agents\skills` 的 11 个技能全部命中过它。
+- **自动启动不再"一次会话只赌一次"**：此前自动启动按**会话**记账，而且先记「已试过」再去看声明，于是某个时刻还不可启动的声明（命令稍后才进 PATH、参数里的 `.uproject` 还没生成）会白白用掉这一次机会，之后的 `agent/status` 与面板读取都被挡住，只能开新会话。现在按**会话 + 服务**记账，且**只在真的发起挂载时才记**——条件不满足的声明会在下一次事件（会话活动、面板读取）自动重试。真正启动失败仍会记下原因并停止自动重试，恢复交给面板的「重新加载」。
+- **一次 start 不再挂载两次**：`catalog()` 不是纯读，它自身会跑自动启动。改成按服务记账后，`start` 里 `{ ...catalog(query), variant: await startVariant(...) }` 会先求值 `catalog()`，把"已批准但还没挂载"的声明交给自动启动，于是同一个服务被挂两次，客户端直接报 `serverName "x" is already in use`。现在先挂载、再读回 catalog。
+- 对话里的技能面板在 Skills 与 MCP 之间切换时，整个弹出框的高度保持不变（并入上游 1.0.9 的修复）。弹出框按视口定高（单行工具栏时列表区仍是 `min(480px, 60vh)`），Skills 的搜索行和窄屏下多出来的工具栏行都改占列表空间，不再把外框撑高或压矮。内容超出时在列表内滚动；设置页仍按内容高度排。
+
+### 兼容
+
+- 适配 DeepSeek Harness 0.2.1：`engines.dsh` 与全部 `@deepseek-ai/dsh-*` peer/开发依赖范围为 `>=0.2.1-rc.1 <0.2.2`（接受 `0.2.1-rc.x` 与 `0.2.1`，拒绝 `0.2.0` 系与 alpha）。CI 构建基线为 `dsh-v0.2.1-rc.5`。
+- 新增 peer `@deepseek-ai/dsh-mcp-client`（范围同其它官方包 `>=0.2.1-rc.1 <0.2.2`），用于按项目声明挂载 MCP 服务。
+- 新增开发依赖 `jsdom`（仅测试用，DOM 级客户端渲染测试；不影响发布产物与运行时）。
+
+### 其它
+
+- 技能开关保存后，通过公开的 Loader/Fiber 生命周期重新挂载官方技能补全客户端，清除其会话目录缓存；不刷新整个页面，不重启 Host，也不修改官方代码。
+- 增加“刷新 / 补全”手动入口；通过 BroadcastChannel 通知其他窗口。刷新失败时区分已保存的开关与尚未更新的补全。
+- 使用 RC2 的真实 Cordis、Loader、输入触发器和官方技能客户端构建产物，验证旧缓存复现、同会话启停、多会话隔离、重复通知合并及 SkillHub 自身热加载的监听清理。
+
+## 1.0.8
+
+### 兼容
+
+- 适配 DeepSeek Harness 0.2.1-rc.5：`engines.dsh` 与全部 `@deepseek-ai/dsh-*` peer/开发依赖范围为 `>=0.2.1-rc.1 <0.2.2`，编译产物与锁文件随该版本重新生成。
 
 ## 1.0.7
 
@@ -29,42 +69,6 @@
 - 安装不再使用 npm 别名；旧用户通过插件管理器移除旧项后迁移，沿用 `$DSH_HOME/skillhub/` 中的开关数据。
 - 打包前检查三处名称一致，阻止发布缺失前端入口的产物；增加官方 RC2 加载器回归。
 - 客户端构建从包名生成注册 ID，并通过 DSHX 外部构建器读取目标平台模块表。
-
-## 1.0.4 补全刷新
-
-### 新增
-
-- **项目技能**：按当前工作目录读取 `.agents/skills`、`.opencode/skills`、`.claude/skills`（一层深，与官方 `dsh-skill-filesystem` 的发现规则一致），在输入框面板的「本项目 / 本对话」层开关；设置页不显示。候选 rank 90/91/92（Agent 作用域再 −2），低于官方项目根的 100/200，因此关闭一个项目技能时官方 provider 无法把它重新填回目录；Off 仍以「抢到名字 + invocation=false」表达，绝不删除文件。`.opencode` / `.claude` 只由本插件供给模型，面板标注「仅 SkillHub」。可在配置里用 `projectSkillRoots` 调整或清空。
-- **项目声明的 MCP**：解析 `.mcp.json`（`mcpServers`）与 `.opencode/opencode.json`（`mcp`，`local` / `remote`），在 MCP 页签列出未运行的服务、每个来源的完整命令行，以及无法启动的具体原因（命令不在 PATH、参数路径不存在、名字不合法、`enabled: false` 等）。启动必须经面板「信任并启动」确认，批准记录按目录写入 `$DSH_HOME/skillhub/mcp-trust/<folderHash>.json` 并绑定声明内容的哈希——改过 `command`/`args`/`env`/`url`/`headers` 后需要重新确认。启动以**本对话作用域**挂载 `@deepseek-ai/dsh-mcp-client`（与 ACP 桥接同一做法），`cwd` 为会话目录，随 agent 释放；同一个名字在两个文件里都声明时合并为一行、分别显示各自命令行。SkillHub 自己挂载的服务被视为可完整隐藏，不受「scope-local 工具」限制。
-- **信任后自动启动**：已经确认过的声明（同一目录 + 同一份声明内容）在**进入该工程的会话时由 SkillHub 自动启动**，不再需要每次手点。自动启动在后台发起：`agent/created` 是 serial 事件且会阻塞会话创建，所以它不阻塞、不抛错，失败只在日志里记一行、并在该行下面显示原因。`agent/created` 时若工作目录尚未就绪，会在该会话第一次进入运行状态或面板读取时补一次。用户在会话里点「停止」后，本次会话不会再自动拉起；改过声明则需要重新确认。可用配置 `autoStartTrustedMcp: false` 保留信任但不自动启动。
-- 新增 ADR `docs/adr/0009-project-roots-and-declared-mcp.md`（部分取代 ADR 0001），并在 `CONTEXT.md` 补充 Project root / Project home / MCP declaration / Trust 词条。
-- 新增测试：`tests/project-skills.test.mjs`（项目根、一层深、rank、赢家规则）、`tests/project-mcp.test.mjs`（声明解析、路径/命令诊断、信任哈希）、`tests/project-mcp-runtime.test.mjs`（declared 行合并、启动装配与作用域、managed 可隐藏）、`tests/registry-integration.test.mjs`（真实 `@deepseek-ai/dsh-skill` 注册表 + `createScope` 复现 Web 拓扑，验证 rank 88/90 压过官方 100/200/400/500 且 Off 不被回填）、`tests/plugin-entry.test.mjs`（走真实 `Config`/`apply`，验证路由、项目 home 载荷、declared MCP、以及 toggle 写盘后经 invalidate 让注册表把技能判为不可调用）、`tests/client-bundle.test.mjs`（按 Web 模块加载器加载 `lib/client.js`，对照宿主 primitives 的真实导出表，验证两个 slot 注册、i18n 字典、外壳渲染，以及新行用到的 class 确实存在于生成的样式表）、`tests/client-panel.test.mjs`（jsdom + 真实 effect 渲染输入框面板：项目根标签与「仅 SkillHub」标记、declared MCP 行与命令行/问题、无法启动的标记，以及「信任并启动」从勾选到发出 `/mcp/start` 请求体的完整交互）、`tests/mcp-mount.test.mjs`（用真实 `@deepseek-ai/dsh-mcp-client` 连接一个真实的 stdio MCP 子进程，验证经 `start()` 后工具真的注册为 `mcp__probe__ping`、`running/managed` 状态、可隐藏，以及 `stop()` 会注销工具并回收子进程；另外验证宿主自己会拒绝非法 `serverName`；以及"已批准的声明在 attach 时自动启动、未批准的不启动"）。
-
-### 界面
-
-- 项目声明但**尚未启动**的 MCP 服务，右侧开关显示为**关且不可点**：此前它按全局默认显示成「开」，可进程根本没起来，等于告诉用户这个服务是开的。启动之后开关恢复显示真实的可见性取值；「全部开启 / 全部关闭」也只作用于当前真实存在的服务，不会把状态写进一个还没跑起来的服务里。
-- MCP 页签顶部标出**声明来源目录的目录名**（完整路径在悬停提示里），并且已经记录过信任的服务行会显示「信任已记录」标签。信任是**按目录记录、并且绑定到某一条声明内容**的：同名的服务在另一个工程里就是另一个目录、另一条命令行，需要各自确认；之前面板不显示这两件事，所以换工程时会误以为「信任没记住」。
-- 输入框弹出面板在「只有一个 home 有技能」时不再收起 home 头部，前提是那一个是项目根：`.opencode` / `.claude` 的技能只由本插件供给模型，这个标签是用户唯一的提示。（只涉及 popover；设置页与纯用户目录的场景行为不变。）
-- **运行中但工具为 0 的挂载行现在有出口**：桥接型服务（如 `npx ue-mcp <project>`）在编辑器起来之前就能握手成功，于是一行显示「运行中」却一个工具都没有——`failOnStartupError` 只看握手，这属于正常启动。这类行现在写明「已连接，但对端尚未提供工具」，并给出**「重新加载」**按钮：卸载当前 fiber，再按同一份已批准的声明挂载一次。宿主只在服务主动发 `tools/list_changed` 时重新拉取工具列表，桥接服务通常不发，所以等待不会自愈，重新挂载是唯一手段（此前只能开一个新会话）。
-
-### 修复
-
-- **运行中的会话挂载服务不再显示「0 个工具」**：面板工具计数只读全局工具层（宿主 `tools.schemas()` 无参视图），而 SkillHub 按本对话作用域挂载的 `@deepseek-ai/dsh-mcp-client` 把 `mcp__<name>__*` 注册进会话作用域层，全局视图里没有这些名字，于是每个已启动的挂载行都显示 0 个工具。现在 catalog 计数把当前会话作用域注册的工具名并入统计（与 `problematic()` 同款读取，代理销毁时安全返回空）；设置页（无会话）保持全局视图；对已声明未启动行的 `tools: 0` 与 `refresh()` 的 deny 路径无影响。
-- **MCP 启动失败不再伪装成"已启动、0 工具"**：之前 `failOnStartupError: false`，服务连不上时插件照样激活，于是那行会显示成已启动却一个工具都没有，原因只在 Host 日志里。现在 SkillHub 自己挂载的服务一律 `failOnStartupError: true`——激活本身就等首连与工具发现，失败即拒绝，行上出现「启动失败」标签和具体原因（含 `cause` 链，如 `spawn npx ENOENT`），并且不会留下任何 fiber。顺带修掉一个更隐蔽的问题：被拒绝的激活仍会在 Cordis 注册表里留下一个 fiber（连同 config），旧代码据此把它算成"在跑"；现在 `liveMcpServers` 只认 `ACTIVE`（state=2）的 fiber。信任记录在失败后保留（信任是对命令的表态，不是对当下能否启动的表态），点「启动」即可重试，成功后失败提示自动消失。
-- **CRLF 的 SKILL.md 会丢掉最后一个 frontmatter 字段**：截取 frontmatter 时切片停在闭合分隔符的 `\n` 上，于是保留了一个 `\r`，而字段行的 `(.*)$` 无法跨过 `\r`——Windows 上写的技能（最后一个字段常常正是 `description`）会被判成 `invalid-frontmatter`，整条技能不显示。现在按 `\r\n` / `\r` / `\n` 三种换行切行，字段值用可跨 `\r` 的模式并 `trim()`。这个 bug 同时影响用户目录里的技能，不只是项目技能；真机检查时 `D:\SSDWP\UE\Test_DreamShader\.agents\skills` 的 11 个技能全部命中过它。
-- **自动启动不再"一次会话只赌一次"**：此前自动启动按**会话**记账，而且先记「已试过」再去看声明，于是某个时刻还不可启动的声明（命令稍后才进 PATH、参数里的 `.uproject` 还没生成）会白白用掉这一次机会，之后的 `agent/status` 与面板读取都被挡住，只能开新会话。现在按**会话 + 服务**记账，且**只在真的发起挂载时才记**——条件不满足的声明会在下一次事件（会话活动、面板读取）自动重试。真正启动失败仍会记下原因并停止自动重试，恢复交给面板的「重新加载」。
-- **一次 start 不再挂载两次**：`catalog()` 不是纯读，它自身会跑自动启动。改成按服务记账后，`start` 里 `{ ...catalog(query), variant: await startVariant(...) }` 会先求值 `catalog()`，把"已批准但还没挂载"的声明交给自动启动，于是同一个服务被挂两次，客户端直接报 `serverName "x" is already in use`。现在先挂载、再读回 catalog。
-
-### 兼容
-
-- 新增 peer `@deepseek-ai/dsh-mcp-client`（范围同其它官方包 `>=0.2.0-rc.1 <0.2.1`），用于按项目声明挂载 MCP 服务。
-- 新增开发依赖 `jsdom`（仅测试用，DOM 级客户端渲染测试；不影响发布产物与运行时）。
-
-### 其它
-
-- 技能开关保存后，通过公开的 Loader/Fiber 生命周期重新挂载官方技能补全客户端，清除其会话目录缓存；不刷新整个页面，不重启 Host，也不修改官方代码。
-- 增加“刷新 / 补全”手动入口；通过 BroadcastChannel 通知其他窗口。刷新失败时区分已保存的开关与尚未更新的补全。
-- 使用 RC2 的真实 Cordis、Loader、输入触发器和官方技能客户端构建产物，验证旧缓存复现、同会话启停、多会话隔离、重复通知合并及 SkillHub 自身热加载的监听清理。
 
 ## 1.0.4
 

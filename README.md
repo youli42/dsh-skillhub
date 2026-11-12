@@ -6,12 +6,16 @@
 
 已包含编译产物；普通使用无需 pnpm、本地构建或 DSHX。
 
-[![GitHub Release](https://img.shields.io/badge/release-v1.0.8-blue?style=flat-square)](https://github.com/aa2246740/dsh-skillhub/releases)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.0--rc.2-4F46E5?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness/tree/dsh-v0.2.0-rc.2)
+> **本仓库是 [aa2246740/dsh-skillhub](https://github.com/aa2246740/dsh-skillhub) 的 fork。**
+> 当前分支 `youli-main` 基于上游 1.0.9（未发布），额外包含「项目技能 / 项目声明的 MCP / MCP 信任与重新加载」。
+> npm 上最新的 `1.0.8` 是上游产物，不含这些功能；安装本分支见 [安装](#-安装)。
+
+[![npm release](https://img.shields.io/badge/npm-v1.0.8-blue?style=flat-square)](https://www.npmjs.com/package/@aa2246740/dsh-skillhub)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1-4F46E5?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness/tree/dsh-v0.2.1-rc.5)
 [![License](https://img.shields.io/badge/license-MIT-yellow?style=flat-square)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/aa2246740/dsh-skillhub?style=flat-square)](https://github.com/aa2246740/dsh-skillhub/stargazers)
 
-[特性亮点](#-特性) • [一键安装](#-安装) • [使用指南](#-使用说明) • [传导机制](#-开关传导规则) • [常见问题](#-常见问题)
+[特性亮点](#-特性) • [安装](#-安装) • [使用指南](#-使用说明) • [传导机制](#-开关传导规则) • [常见问题](#-常见问题)
 
 </div>
 
@@ -25,6 +29,8 @@
 
 无需手动修改配置，安装后自动挂载，纯可见性控制，绝不修改或删除任何原始磁盘文件。项目里声明的 MCP 服务**不会自动启动**：面板展示完整命令行，只有你确认信任后才以本对话的作用域启动。
 
+面板管理的是**已经存在**的 MCP：运行中的服务、以及项目文件里声明的服务。它不提供新建或编辑 MCP 的输入界面；新增服务仍写在 `.mcp.json` / `.opencode/opencode.json`，或通过 DSH 的 mcp-client 配置挂载，详见[在项目里新增 MCP 服务](#3-在项目里新增-mcp-服务)。
+
 ---
 
 ## ✨ 特性
@@ -34,27 +40,44 @@
 - 🎯 **三层作用范围**：全局设置机器默认值、项目管理工程级偏好、单对话按需微调，互不干扰。
 - 🔄 **智能向下传导**：全局操作同步覆盖所有层，项目操作同步所属对话，对话临时覆盖，新会话自动继承。
 - 📁 **项目技能**：按当前工作目录识别项目内的技能目录（一层深，和 DSH 官方 provider 的发现规则一致）；`.opencode` / `.claude` 只由本插件供给给模型，面板会标注。
-- 🔌 **MCP 服务联动支持**：独立的 MCP 页签，按服务动态隐藏/暴露工具，进程常驻；项目声明的服务会先列出命令行和问题，经你确认后才启动。
+- 🔌 **MCP 服务联动支持**：独立的 MCP 页签，按服务动态隐藏/暴露工具；项目声明的服务先列出命令行和启动问题，确认信任后才启动，并支持停止与重新加载。新增 MCP 不在面板里做，仍写在项目声明文件或 DSH 配置中。
 - 🎨 **原生细节融合**：切换作用范围时保留列表；开关保存后自动重新加载 `/` 技能补全，桌面端也无需刷新窗口。
-- 🚀 **开箱即用**：`main` 分支已内置编译产物，用户端免装编译环境、免配置 `allowBuilds`。
+- 🚀 **开箱即用**：本分支已内置编译产物，用户端免装编译环境、免配置 `allowBuilds`。
 
 ---
 
 ## 📦 安装
 
-支持 DeepSeek Harness **0.2.0-rc.2**。GitHub 和 npm 使用同一个包名 `@aa2246740/dsh-skillhub`，安装时不要设置 npm 别名。
+支持 DeepSeek Harness **0.2.1-rc.1 ~ 0.2.1**（`engines.dsh` 为 `>=0.2.1-rc.1 <0.2.2`，0.2.0 及更早版本会被拒绝）。GitHub、npm 与本 fork 使用同一个包名 `@aa2246740/dsh-skillhub`，安装时不要设置 npm 别名。
 
 **版本对照**（装错版本会被 DSH 在启动时整体拒绝，表现为「装了但完全没有入口」）：
 
 | DSH 版本 | 可装的插件版本 |
 |---|---|
-| 0.2.0-rc.x | `1.0.4` 及以上（推荐最新） |
-| 0.1.7-rc.x | `1.0.2`（1.0.4+ 不兼容） |
+| 0.2.1-rc.x / 0.2.1 | `1.0.8`（npm 最新，上游）/ `1.0.9`（本仓库 `youli-main`，含项目技能与项目声明 MCP） |
+| 0.2.0-rc.x / 0.2.0 | `1.0.4` ~ `1.0.7` |
+| 0.1.7-rc.x | `1.0.2` ~ `1.0.3`（1.0.4+ 不兼容） |
 | 0.1.5 | `1.0.1` |
 
-### DSH Studio 桌面 App（推荐）
+### 本分支（youli-main）
 
-打开 **设置 → 插件 → 添加插件**，在“包名或地址”中输入：
+本分支的编译产物已提交，安装时不需要构建。打开 **设置 → 插件 → 添加插件**，输入：
+
+```text
+github:youli42/dsh-skillhub#youli-main
+```
+
+或使用 Web CLI：
+
+```bash
+dsh plugin --profile web add github:youli42/dsh-skillhub#youli-main
+```
+
+它与 npm 版同包名，安装前先移除已安装的 `@aa2246740/dsh-skillhub`，避免两份并存。安装后同样要点击「立即启用」或打开插件开关，入口才会出现。
+
+### 上游 npm 版（1.0.8）
+
+不含项目技能与项目声明 MCP，功能以[上游 README](https://github.com/aa2246740/dsh-skillhub#readme) 为准。在“包名或地址”中输入：
 
 ```text
 @aa2246740/dsh-skillhub@1.0.8
@@ -71,7 +94,7 @@ github:aa2246740/dsh-skillhub#v1.0.8
 ### 从 1.0.4 或更早版本迁移
 
 1. 在桌面 **设置 → 插件** 中移除旧的 `dsh-skillhub` 或旧版 `@aa2246740/dsh-skillhub` 安装项。
-2. 用上面的包名安装 1.0.6，并点击「立即启用」。不要继续使用 `dsh-skillhub@npm:...` 别名，也不要保留两份安装。
+2. 用上面的地址安装当前版本，并点击「立即启用」。不要继续使用 `dsh-skillhub@npm:...` 别名，也不要保留两份安装。
 3. 检查设置中的 `skill&mcp` 页面和对话输入框上方的「技能」按钮。
 
 技能和 MCP 开关仍保存在 `$DSH_HOME/skillhub/`，迁移不需要删除该目录，也不需要删除原始技能文件。
@@ -106,6 +129,27 @@ Web 命令只作用于 `web` profile，不能给桌面 App 安装插件。
 - 支持快捷搜索技能、一键复制 `/<skill-name>` 命令。
 - 切换无闪烁，调整后模型下一次回复立即按新配置生效。
 
+### 3. 在项目里新增 MCP 服务
+
+面板不提供「新建 / 编辑 MCP」的输入框，MCP 声明仍写在项目文件里，面板负责发现、信任、启动与开关：
+
+1. 在**会话工作目录**（不是 git 根目录）写声明。`.mcp.json` 使用 Claude Code 兼容格式：
+
+   ```json
+   {
+     "mcpServers": {
+       "my-server": { "command": "npx", "args": ["-y", "some-mcp-server"], "env": {} }
+     }
+   }
+   ```
+
+   或写 `.opencode/opencode.json` 的 `mcp` 表（`type: "local"` 用 `command: ["npx", ...]`，`type: "remote"` 用 `url` / `headers`）。
+
+2. 打开该工程的对话 → 点 **「技能」** → **MCP** 页签。新服务会以「项目声明」行出现，并显示完整命令行；命令不在 PATH、参数路径不存在等问题会直接列在该行。
+3. 点「信任并启动」，勾选确认后以**本对话作用域**启动；之后进入同一工程的会话会自动启动它（`autoStartTrustedMcp: false` 可关闭自动启动）。改过声明（`command`/`args`/`env`/`url`/`headers`）需要重新确认。
+
+**全局常驻的 MCP** 不在项目文件里：需要先在 DSH profile 中挂载 `@deepseek-ai/dsh-mcp-client` 的 bundle 行，面板才能列出并开关它。
+
 > 项目技能与声明文件都相对**当前工作目录**读取，不向上级目录查找。可在插件配置里用 `projectSkillRoots` / `projectMcpFiles` 调整或清空；`autoStartTrustedMcp: false` 会保留信任记录但不再自动启动。
 
 ---
@@ -128,8 +172,11 @@ Web 命令只作用于 `web` profile，不能给桌面 App 安装插件。
 Web 用户使用：
 
 ```bash
-# 更新
+# 更新上游 npm 版
 dsh plugin --profile web add @aa2246740/dsh-skillhub@1.0.8
+
+# 更新本分支（youli-main）
+dsh plugin --profile web add github:youli42/dsh-skillhub#youli-main
 
 # 卸载
 dsh plugin --profile web remove @aa2246740/dsh-skillhub
@@ -142,7 +189,7 @@ dsh plugin --profile web remove @aa2246740/dsh-skillhub
 <details>
 <summary><b>Q: 安装后刷新页面没有出现插件功能？</b></summary>
 
-A: 先按上面的**版本对照**确认插件版本与 DSH 版本匹配——不匹配时 DSH 会在启动时整行拒绝该插件，界面上什么都看不到，重启也不会恢复。再确认安装到了当前使用的 Desktop 或 Web profile（第三方启动器的「整合包」默认装进独立 profile，需要切到那份 profile 运行），并且已点击「立即启用」或打开插件开关（部分启动器在插件报错后会自动关闭开关，升级 DSH 后需手动重新打开），再查看插件管理器的加载结果。npm 1.0.4 的包名与前端注册名不一致，即使用旧说明中的别名安装，DSH 也可能跳过前端入口。请按迁移步骤换成 1.0.6，直接使用 `@aa2246740/dsh-skillhub@1.0.8`。若仍缺少入口，请提供 DSH 版本、安装地址及管理器错误文字；反复刷新不会修复包名错误。
+A: 先按上面的**版本对照**确认插件版本与 DSH 版本匹配——不匹配时 DSH 会在启动时整行拒绝该插件，界面上什么都看不到，重启也不会恢复。再确认安装到了当前使用的 Desktop 或 Web profile（第三方启动器的「整合包」默认装进独立 profile，需要切到那份 profile 运行），并且已点击「立即启用」或打开插件开关（部分启动器在插件报错后会自动关闭开关，升级 DSH 后需手动重新打开），再查看插件管理器的加载结果。npm 1.0.4 的包名与前端注册名不一致，即使用旧说明中的别名安装，DSH 也可能跳过前端入口。请按迁移步骤换成当前版本：本分支用 `github:youli42/dsh-skillhub#youli-main`，上游用 `@aa2246740/dsh-skillhub@1.0.8`。若仍缺少入口，请提供 DSH 版本、安装地址及管理器错误文字；反复刷新不会修复包名错误。
 </details>
 
 <details>
@@ -157,11 +204,25 @@ A: SkillHub 保存开关后，会通过官方 Cordis 生命周期重新挂载技
 A: 关闭技能会立刻阻止后续向模型提供该技能的定义，但如果此前该技能的内容已经被读取进当前对话的上下文历史中，该轮会话中已读内容不会被篡改。新开一个会话即可彻底清空。
 </details>
 
+<details>
+<summary><b>Q: 可以在面板里新增或编辑 MCP 服务吗？</b></summary>
+
+A: 不能。面板只管理**已声明或已运行**的服务：新增请写 `.mcp.json` 或 `.opencode/opencode.json`（见「在项目里新增 MCP 服务」），全局常驻服务通过 DSH 的 `@deepseek-ai/dsh-mcp-client` bundle 挂载。面板既不写这两个文件，也不修改它们。
+</details>
+
+---
+
+## 🔗 与上游的关系
+
+- 上游：[aa2246740/dsh-skillhub](https://github.com/aa2246740/dsh-skillhub)，npm 最新 `1.0.8`，面向 DSH 0.2.1。
+- 本 fork：`main` 与上游同步（镜像），`youli-main` 保留本项目全部功能提交（项目技能、项目声明 MCP、信任与自动启动、重新加载等），包版本 `1.0.9`，尚未发布到 npm。
+- 同步方式：把上游 `main` 合并进 `youli-main`，解决冲突后重新生成 `lib/` 并跑测试。
+
 ---
 
 ## 开发与发布检查
 
-源码构建使用 DSHX 的外部插件构建器，`DSHX_HARNESS` 指向安装了 DSHX 的官方 `dsh-v0.2.0-rc.2` checkout。构建仅读取目标平台信息，输出保存在本插件目录。
+源码构建使用 DSHX 的外部插件构建器，`DSHX_HARNESS` 指向安装了 DSHX 的官方 `dsh-v0.2.1-rc.5` checkout（与 CI 一致）。构建仅读取目标平台信息，输出保存在本插件目录；`lib/` 随本分支提交，因此 `youli-main` 可以免构建安装。
 
 ```bash
 pnpm install --frozen-lockfile --ignore-workspace --config.auto-install-peers=false
@@ -169,8 +230,8 @@ pnpm test
 pnpm pack
 ```
 
-`prepack` 校验包名、bundle 模块名和编译后的前端注册名；不一致时拒绝打包。发布时直接使用这个包，不要再改写包名。隔离加载回归运行方式见 `tests/package-loader-runtime.test.mjs`。
+`prepack` 校验包名、bundle 模块名和编译后的前端注册名；不一致时拒绝打包。`tests/stock-install.test.mjs` 还会校验 README 里的安装命令指向已发布版本。发布时直接使用这个包，不要再改写包名。隔离加载回归运行方式见 `tests/package-loader-runtime.test.mjs`。
 
 ## 📄 License
 
-MIT © [aa2246740](https://github.com/aa2246740)
+MIT © [aa2246740](https://github.com/aa2246740)，fork 维护：[youli42](https://github.com/youli42)
