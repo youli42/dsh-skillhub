@@ -9,6 +9,7 @@ import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { CatalogNode, CatalogPayload, Gate, GroupChild, GroupGate, HomeKind, HomeRoot, LayerName, SkillRef } from './catalog-api.ts'
 import { fetchCatalog, postCatalog } from './catalog-api.ts'
 import type { SkillHubKey } from './locales.ts'
+import { readPanelTab, writePanelTab, type PanelTab } from './persist.ts'
 import css from './SkillHubPanel.module.css'
 import { refreshSkillAutocomplete } from './slash-refresh.ts'
 
@@ -195,7 +196,9 @@ export function SkillHubPanel(props: {
   const [refreshing, setRefreshing] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [notice, setNotice] = useState<{ key: SkillHubKey; seq: number }>()
-  const [tab, setTab] = useState<'skills' | 'mcp'>('skills')
+  // Reopening the panel lands where the user left it: the popover unmounts on
+  // every close, so the tab is read back from storage instead of restarting.
+  const [tab, setTab] = useState<PanelTab>(() => readPanelTab(props.surface))
   const [mcpServerCount, setMcpServerCount] = useState<number>()
   const [mcpBulk, setMcpBulk] = useState<McpBulkActions>()
   const [moreOpen, setMoreOpen] = useState(false)
@@ -284,14 +287,18 @@ export function SkillHubPanel(props: {
     if (tab === 'mcp') { if (id === 'allOn') mcpBulk?.allOn(); else mcpBulk?.allOff() }
     else void mutate({ kind: 'all', on: id === 'allOn' }, id === 'allOn')
   }
+  const selectTab = (next: PanelTab) => {
+    setTab(next)
+    writePanelTab(props.surface, next)
+  }
   return <div className={css.root} data-surface={props.surface} data-skillhub-panel="" aria-busy={busy || refreshing}>
     <div className={css.toolbar}>
       <div className={css.tabs} role="tablist" aria-label={t('tab.aria')}>
-        <Pill role="tab" aria-selected={tab === 'skills'} active={tab === 'skills'} onClick={() => setTab('skills')}>
+        <Pill role="tab" aria-selected={tab === 'skills'} active={tab === 'skills'} onClick={() => selectTab('skills')}>
           <IconSkillOutlineRegular size={13} /><span>{t('tab.skills')}</span>
           {allSkillCount > 0 ? <span className={css.pillCount}>{allSkillCount}</span> : null}
         </Pill>
-        <Pill role="tab" aria-selected={tab === 'mcp'} active={tab === 'mcp'} onClick={() => setTab('mcp')}>
+        <Pill role="tab" aria-selected={tab === 'mcp'} active={tab === 'mcp'} onClick={() => selectTab('mcp')}>
           <IconCordisPluginOutlineRegular size={13} /><span>{t('tab.mcp')}</span>
           {mcpServerCount !== undefined && mcpServerCount > 0 ? <span className={css.pillCount}>{mcpServerCount}</span> : null}
         </Pill>
