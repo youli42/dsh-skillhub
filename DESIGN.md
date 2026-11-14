@@ -130,7 +130,9 @@ Composer chip and layer segments use pill 18px. The popover and dialogs use 12px
 
 ## Do's and Don'ts
 
-- Do reuse `--dsw-*`, Button, Input, and `useAnchoredPosition`.
+- Do reuse `--dsw-*`, Button, and Input.
+- Do place the composer panel with the local `usePanelPosition` hook. dsh 0.2.2 removed the host's
+  `useAnchoredPosition` and `AnchoredPositionOptions`, so that export must not be imported again.
 - Do keep Off as a visibility switch. Do not add Install or Delete to this UI.
 - Do let a multi-skill folder switch as a batch. A one-skill folder is just that skill.
 - Do show mixed groups as mixed, not On or Off.
