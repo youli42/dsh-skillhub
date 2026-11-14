@@ -127,8 +127,12 @@ test('the composer popover renders project Skills, a declared MCP service, and t
   }
   const browserChannel = globalThis.BroadcastChannel
   globalThis.BroadcastChannel = undefined
+  // The client bundle reads the remembered tab from `globalThis.localStorage`,
+  // which in the browser is the window's storage.
+  Object.defineProperty(globalThis, 'localStorage', { value: window.localStorage, configurable: true, writable: true })
   t.after(() => {
     globalThis.BroadcastChannel = browserChannel
+    delete globalThis.localStorage
     dom.window.close()
   })
 
@@ -383,4 +387,33 @@ test('the composer popover renders project Skills, a declared MCP service, and t
   const reloaded = calls.find(call => call.url.includes('/mcp/reload'))
   assert.ok(reloaded !== undefined, 'reloading should call the reload route')
   assert.deepEqual(reloaded.body, { layer: 'session', sessionId: 's1', folder: CWD, server: 'ue-bridge' })
+
+  // The tab choice outlives the panel: the popover unmounts on every close, so
+  // without storage a user who was mid-MCP reopens on Skills.
+  assert.equal(window.localStorage.getItem('dsh-skillhub:tab:popover'), 'mcp')
+  const closePopover = async () => {
+    await act(async () => { trigger.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
+  }
+  const openPopover = async () => {
+    await act(async () => { trigger.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
+  }
+  await closePopover()
+  assert.equal(window.document.querySelector('[data-ud-check="skillhub-mcp-body"]'), null, 'closing unmounts the panel')
+  await openPopover()
+  assert.ok(window.document.querySelector('[data-ud-check="skillhub-mcp-body"]') !== null,
+    'reopening returns to the remembered MCP tab')
+  assert.equal(window.document.querySelector('[data-ud-check="skillhub-tree"]'), null, 'and not to Skills')
+
+  // An unrecognized stored value falls back to Skills instead of rendering an
+  // empty panel.
+  window.localStorage.setItem('dsh-skillhub:tab:popover', 'bogus')
+  await closePopover()
+  await openPopover()
+  assert.ok(window.document.querySelector('[data-ud-check="skillhub-tree"]') !== null,
+    'an unrecognized stored tab falls back to Skills')
+  assert.equal(window.document.querySelector('[data-ud-check="skillhub-mcp-body"]'), null)
+
+  // The surface is part of the key, so a remembered popover tab never decides
+  // which tab the settings page opens on.
+  assert.equal(window.localStorage.getItem('dsh-skillhub:tab:page'), null)
 })
