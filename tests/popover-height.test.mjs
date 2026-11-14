@@ -61,7 +61,7 @@ async function browserEnv() {
   const names = ['Button', 'IconChevronRightOutlineRegular', 'IconCordisPluginOutlineRegular',
     'IconEllipsisOutlineRegular', 'IconSearchOutlineRegular', 'IconSkillOutlineRegular',
     'IconWarningOutlineRegular', 'Input', 'Menu', 'Pill', 'Tag', 'Toast', 'Tooltip',
-    'writeClipboard', 'useAnchoredPosition']
+    'writeClipboard']
   const entry = join(tmpdir(), 'skillhub-popover-height-entry.mjs')
   const { writeFile } = await import('node:fs/promises')
   await writeFile(entry, `

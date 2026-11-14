@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import {
-  IconSkillOutlineRegular,
-  useAnchoredPosition,
-} from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconSkillOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -13,6 +10,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-general/client'
 import { SkillHubPanel } from './SkillHubPanel.tsx'
+import { usePanelPosition } from './usePanelPosition.ts'
 import { en, zh, type SkillHubKey } from './locales.ts'
 import css from './SkillHubPanel.module.css'
 import { connectSlashRefresh, type SkillClientLoader } from './slash-refresh.ts'
@@ -75,7 +73,7 @@ function SkillHubChip(props: PropsRuntime<'conversation.input.left'> & PropsLoca
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const panelPosition = useAnchoredPosition({
+  const panelPosition = usePanelPosition({
     open,
     anchorRef: triggerRef,
     panelRef,
