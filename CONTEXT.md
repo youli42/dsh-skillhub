@@ -82,6 +82,22 @@ A declared project MCP service is a row before it is a process: SkillHub shows t
 
 An approved service starts on its own when a session of that folder opens: trust means "run this command in this project", so opening the project is the moment it applies. Starting never blocks session creation, a start that fails is reported on the row with its reason (and leaves nothing mounted, since a declared service counts as running only when it is connected), and a service the user stopped stays stopped for that session. `autoStartTrustedMcp: false` in the plugin Config keeps trust but starts nothing by itself.
 
+**Managed MCP server**:
+An MCP definition created in Settings and owned by SkillHub, not by a project file. Its run state is the harness MCP manager's; its process stops when the definition is disabled or deleted.
+_Avoid_: declared server, project MCP, 插件内置 MCP
+
+**Secret reference**:
+The environment-variable-shaped name that stands in for one managed server secret. The value lives in the harness credential provider; SkillHub configuration and activity records carry only the reference and a provider-masked preview.
+_Avoid_: password field, plaintext env
+
+**Activity record**:
+One redacted line in SkillHub's managed-MCP audit trail: time, action, server, changed field names, secret references, and result. It never contains a secret value and is not a configuration backup.
+_Avoid_: log, 密钥记录, history
+
+**Skill creation**:
+Writing a new `<home>/<name>/SKILL.md` from Settings. It is add-only: an existing Skill, file, or link is never overwritten, and SkillHub does not edit or delete Skills it did not create.
+_Avoid_: install, import (when the action writes a new file)
+
 **Reload**:
 Dispose a mounted declared MCP service and mount the same approved declaration again in the open chat. It is the only way to pick up a tool list the server never announces, and it approves no new command.
 _Avoid_: restart, reconnect (as a promise of fresh approval)

@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.1.0（youli-main 分支，未发布）
+
+本版本在 1.0.9 的项目技能与项目声明 MCP 之上，加入「在设置里新增技能与 MCP」。
+
+### 新增
+
+- **添加技能**：设置页右上角可安装本地技能文件夹，或直接新建 `<home>/<name>/SKILL.md`。名称按宿主语法校验，目标已存在则拒绝；文件以 `wx` 写入，失败会回滚新建目录。安装只链接源文件夹，不复制、不覆盖。
+- **添加 MCP**：设置页可新增 stdio 或 HTTP 托管服务，编辑定义、启停、重启和删除。定义保存在 `$DSH_HOME/skillhub/mcp-servers.json`（0600），并注册给 DSH 自带的 MCP 管理器；面板显示连接中、已连接工具数、等待密钥、启动失败等真实状态。
+- **密钥托管**：环境变量和请求头的值不写入 SkillHub 配置，而是通过 `ctx.credentials` 存入 DSH 凭据库；配置里只留 `${credential:...}` 引用。面板只显示服务商给的掩码，不显示完整值；删除服务时清理引用。
+- **操作记录**：MCP 的创建、更新、启停、重启、删除和密钥写入都追加到 `$DSH_HOME/skillhub/audit/mcp.jsonl`（0600，超过 1 MiB 轮转）。记录只含字段名、密钥引用、结果和脱敏错误，不含密钥值；面板可按服务查看最近记录。
+- **修订冲突保护**：编辑与删除带 `expectedRevision`，多窗口同时修改时返回可读错误而不是静默覆盖。
+- 新增 ADR `docs/adr/0010-managed-skills-and-mcp.md`，并在 `CONTEXT.md` / `DESIGN.md` 补充 Managed MCP server、Secret reference、Activity record、Skill creation 词条与弹窗规范。
+
+### 兼容
+
+- 没有 `mcpManager` 的 DSH（例如 0.2.1 早期构建）仍可正常使用原有技能/项目 MCP 开关；新增 MCP 的入口会提示不可用，不会回退到私有进程管理或明文密钥。
+- 项目声明文件仍只读；项目声明中的明文 `env` / `headers` 不会被本版本改写或搬迁。
+
+### 测试
+
+- 新增 `tests/managed-mcp-store.test.mjs`（定义校验、密钥引用、修订冲突、删除清理、审计脱敏与过滤）、`tests/managed-mcp-runtime.test.mjs`（注册/注销、状态映射、密钥写入与清理、无管理器降级）和 `tests/skill-create.test.mjs`（新建、重名/穿越拒绝、frontmatter 引号、空包拒绝、symlink 安装）。
+
 ## 1.0.9（youli-main 分支，未发布）
 
 本版本基于上游 1.0.8，并合入上游待发布的 1.0.9 弹出框修复；此外在 fork 的 `youli-main` 分支上加入项目技能、项目声明的 MCP 与配套修复。尚未发布到 npm。

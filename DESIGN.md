@@ -82,7 +82,9 @@ The tree is the product. Effective Visibility resolves Chat → Project → Glob
 
 Project roots are their own home sections, labelled by folder name. `.opencode` and `.claude` carry a `SkillHub only` tag because DSH itself never reads them; `.agents` does not, because DSH reads that root too. Project roots appear only in the composer panel's Project and Chat scopes — a Global read has no folder and shows no project section. One level deep, matching what the model can actually load.
 
-MCP is the second tab. A running service switches per scope like a Skill. A project-declared service is a row before it is a process: the row shows its exact command line and every problem that would stop it, and it starts only after the user acknowledges that command. A started bridge with no tools yet offers Reload, because the host re-lists only on `tools/list_changed` and waiting cannot fix it. SkillHub never edits the declaration files.
+MCP is the second tab. A running service switches per scope like a Skill. A project-declared service is a row before it is a process: the row shows its exact command line and every problem that would stop it, and it starts only after the user acknowledges that command. A started bridge with no tools yet offers Reload, because the host re-lists only on `tools/list_changed` and waiting cannot fix it. Project declaration files stay read-only.
+
+The settings page also owns managed MCP servers: the user adds a definition there, SkillHub registers it with the harness MCP manager, and the values of its environment variables and headers live in the harness credential provider as references. A managed row is editable, can be disabled without losing its secrets, and carries a redacted activity trail. Deleting it stops the process, removes the definition, and clears its credential references; the activity records remain. When the host provides no MCP manager, the add/edit affordances are unavailable rather than falling back to a second process manager or a plaintext vault.
 
 ## Colors
 
@@ -128,12 +130,19 @@ Composer chip and layer segments use pill 18px. The popover and dialogs use 12px
 
 **Search.** Visible label Search skills. Filters the tree and keeps ancestor packs of matches. Critical names wrap rather than vanish.
 
+**Add Skill dialog.** One settings-only modal with two modes: install a local folder (path plus Agent/DSH home) or create a `SKILL.md` (name, description, optional when-to-use, instructions). It explains that installation links the source folder and never overwrites an existing Skill. No delete or edit action for existing Skills.
+
+**Managed MCP dialog and row.** The dialog collects name, transport, command/arguments or URL, environment variables or headers, and run intent. Secret rows show a masked saved state and offer Keep, Replace, and Clear; the full value is never rendered. A managed row shows its provenance, live status, and a menu with Edit, Activity, Restart, and Delete. Delete uses a confirmation that states secrets are removed and activity remains. The dialog is unavailable when the host has no MCP manager.
+
+**Activity dialog.** A read-only list of redacted records for one server: time, action, result, changed field names, and error text. It never shows a secret value or the raw JSON line.
+
 ## Do's and Don'ts
 
 - Do reuse `--dsw-*`, Button, and Input.
 - Do place the composer panel with the local `usePanelPosition` hook. dsh 0.2.2 removed the host's
   `useAnchoredPosition` and `AnchoredPositionOptions`, so that export must not be imported again.
-- Do keep Off as a visibility switch. Do not add Install or Delete to this UI.
+- Do keep Off as a visibility switch. Add is an explicit settings action; it never overwrites an existing Skill or project declaration.
+- Do keep project declaration files read-only even when the panel can create managed servers.
 - Do let a multi-skill folder switch as a batch. A one-skill folder is just that skill.
 - Do show mixed groups as mixed, not On or Off.
 - Do keep Global editing in Settings and Project/Chat editing in the composer panel.
@@ -163,7 +172,7 @@ Composer chip and layer segments use pill 18px. The popover and dialogs use 12px
 - Primary audience: A DSH user who already lives in the Web session and settings.
 - Core job to be done: See which installed Skills the current scope will offer, understand where each state comes from, and override or resume following the parent.
 - Success criteria: The panel looks like DSH, not a debug form. Entry ownership, inheritance source, Follow actions, home/pack/group switches, expanded leaf switches, search, empty, error, mixed, and collision are usable by keyboard and pointer.
-- Non-goals: Glance Hub. Managing Host/plugin skills. Install or delete UI. Starting a project-declared MCP service without approval. Shipping a new color system. Restarting an adopted Host.
+- Non-goals: Glance Hub. Managing Host/plugin skills. Deleting or editing existing Skill files. Starting a project-declared MCP service without approval. Shipping a new color system. Restarting an adopted Host.
 - Must preserve: Two homes. Chat > Project > Global. Missing overrides inherit. Off leaves files. Collisions both show. Project visibility is user-local.
 - Validation must check against: Native chrome, layer semantics, folder batch toggles including mixed, a child toggled alone, search, empty/error, composer chip open/close, keyboard/focus, reduced-motion still works.
 

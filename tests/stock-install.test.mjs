@@ -64,7 +64,7 @@ test('peer range accepts Harness 0.2.1-rc.5 and rejects alphas, 0.2.0, and 0.1.7
   assert.equal(JSON.stringify(pkg).includes('0.1.5-rc'), false)
   assert.equal(JSON.stringify(pkg).includes('0.1.7-rc'), false)
   assert.equal(JSON.stringify(pkg).includes('0.2.0-alpha'), false)
-  assert.equal(pkg.version, '1.0.9')
+  assert.equal(pkg.version, '1.1.0')
 })
 
 test('documents the official web install one-liner', () => {
