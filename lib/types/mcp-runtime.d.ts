@@ -1,5 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis';
-import { McpHub, type McpCatalogQuery, type McpServerView } from './mcp.ts';
+import { McpHub, type McpCatalogQuery, type McpManagedView, type McpServerView } from './mcp.ts';
 import { type ProjectMcpRead } from './project-mcp.ts';
 interface Agent {
     id: string;
@@ -26,6 +26,12 @@ export interface ProjectMcpOptions {
      * anything: an untrusted command still waits for the user.
      */
     readonly autoStart?: boolean;
+    /**
+     * SkillHub-managed servers. Their definitions live outside a project, but the
+     * panel still routes them through the same visibility document and shows
+     * their run state next to declared servers.
+     */
+    readonly managed?: () => readonly McpManagedView[];
 }
 /**
  * Uses public Cordis fiber configuration; only serverName leaves this function.
