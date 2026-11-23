@@ -399,6 +399,7 @@ export class ManagedMcpRuntime {
         await this.syncNow()
         this.audit('server.create', input.name, prepared.definition, prepared.fields, prepared.secrets.map(write => write.ref), 'ok')
       } catch (error) {
+        this.registrationErrors.set(input.name, redactAuditText(error))
         this.audit('server.create', input.name, prepared.definition, prepared.fields, prepared.secrets.map(write => write.ref), 'error', error)
         throw error
       }
@@ -422,6 +423,7 @@ export class ManagedMcpRuntime {
         await this.syncNow()
         this.audit('server.update', name, prepared.definition, prepared.fields, prepared.secrets.map(write => write.ref), 'ok')
       } catch (error) {
+        this.registrationErrors.set(name, redactAuditText(error))
         this.audit('server.update', name, prepared.definition, prepared.fields, prepared.secrets.map(write => write.ref), 'error', error)
         throw error
       }
