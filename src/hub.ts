@@ -8,6 +8,7 @@ import {
   type VisibilityDocument, type VisibilityLayer,
 } from './catalog.ts'
 import { DEFAULT_PROJECT_SKILL_ROOTS, projectSkillRoots } from './project-roots.ts'
+import { assertSkillPack } from './skill-create.ts'
 
 export type LayerName = VisibilityLayer
 export type CatalogQuery = {
@@ -212,6 +213,7 @@ export class SkillHub {
     let real: string
     try { real = realpathSync(sourceDir) } catch { throw new Error(`Pack source directory does not exist: ${sourceDir}`) }
     if (!lstatSync(real).isDirectory()) throw new Error(`Pack source is not a directory: ${sourceDir}`)
+    assertSkillPack(real)
     const destHome = home === 'agent' ? this.paths.agentHome : this.paths.dshHome
     mkdirSync(destHome, { recursive: true })
     const name = basename(sourceDir)

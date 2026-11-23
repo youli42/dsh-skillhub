@@ -233,3 +233,50 @@ test('malformed JSON is a 400 client error, not a 500', async () => {
   assert.equal(res.result.status, 400)
   assert.match(JSON.parse(res.result.body).error, /invalid JSON/i)
 })
+
+test('managed MCP routes require the runtime and pass through the managed payload', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'skillhub-managed-http-'))
+  const hub = new SkillHub({agentHome:join(root,'agent'), dshHome:join(root,'dsh'), storeDir:join(root,'store')})
+  let created
+  const payload = { available: true, revision: 1, servers: [] }
+  const managed = {
+    list: async () => payload,
+    auditTrail: () => [{ at: '2026-01-01T00:00:00.000Z', action: 'server.create', result: 'ok' }],
+    create: async input => { created = input; return payload },
+    update: async () => payload,
+    remove: async () => payload,
+    setEnabled: async () => payload,
+    restart: async () => payload,
+  }
+  const handle = handleSkillHubHttp(hub, () => {}, () => undefined, undefined, managed)
+
+  let res = response()
+  await handle(request('/skillhub/mcp/managed', undefined, 'GET'), res)
+  assert.equal(res.result.status, 200)
+  assert.deepEqual(JSON.parse(res.result.body), payload)
+
+  res = response()
+  await handle(request('/skillhub/mcp/managed/create', { name: 'github', transport: 'stdio', command: 'npx' }), res)
+  assert.equal(res.result.status, 200)
+  assert.equal(created.name, 'github')
+
+  res = response()
+  await handle(request('/skillhub/mcp/managed/audit?server=github', undefined, 'GET'), res)
+  assert.equal(res.result.status, 200)
+  assert.equal(JSON.parse(res.result.body).entries.length, 1)
+})
+
+test('skill creation writes one SKILL.md and invalidates the provider', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'skillhub-skill-http-'))
+  const hub = new SkillHub({agentHome:join(root,'agent'), dshHome:join(root,'dsh'), storeDir:join(root,'store')})
+  let invalidations = 0
+  const handle = handleSkillHubHttp(hub, () => { invalidations += 1 }, () => undefined)
+  const res = response()
+  await handle(request('/skillhub/skill/create', {
+    home: 'agent', name: 'created-skill', description: 'from the panel', body: 'Do the work.',
+  }), res)
+  assert.equal(res.result.status, 200)
+  assert.equal(invalidations, 1)
+  await access(join(root, 'agent', 'created-skill', 'SKILL.md'))
+  assert.equal(JSON.parse(res.result.body).offered.some(skill => skill.name === 'created-skill'), true)
+})

@@ -2,6 +2,9 @@ import type { installMcpVisibility } from './mcp-runtime.ts'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Catalog, HomeKind, SkillId } from './catalog.ts'
 import type { LayerName, SkillHub, ToggleTarget, VisibilityTarget } from './hub.ts'
+import { createSkill, readCreateSkillInput } from './skill-create.ts'
+import type { ManagedMcpRuntime } from './managed-mcp-runtime.ts'
+import type { ManagedServerInput } from './managed-mcp-store.ts'
 
 const PREFIX = '/skillhub'
 
@@ -116,6 +119,7 @@ export function handleSkillHubHttp(
   invalidate: () => void,
   requestRejection?: (req: IncomingMessage) => 401 | 403 | undefined,
   mcp?: ReturnType<typeof installMcpVisibility>,
+  managedMcp?: ManagedMcpRuntime,
 ) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
@@ -136,6 +140,19 @@ export function handleSkillHubHttp(
         send(res, 200, mcp.catalog(query(url)))
         return
       }
+      if (req.method === 'GET' && path === '/mcp/managed') {
+        if (!managedMcp) { send(res, 503, { error: 'Managed MCP unavailable' }); return }
+        send(res, 200, await managedMcp.list())
+        return
+      }
+      if (req.method === 'GET' && path === '/mcp/managed/audit') {
+        if (!managedMcp) { send(res, 503, { error: 'Managed MCP unavailable' }); return }
+        const server = url.searchParams.get('server') ?? undefined
+        const limitValue = Number(url.searchParams.get('limit') ?? '50')
+        const limit = Number.isFinite(limitValue) ? Math.min(Math.max(Math.trunc(limitValue), 1), 200) : 50
+        send(res, 200, { entries: managedMcp.auditTrail(server, limit) })
+        return
+      }
       if (req.method === 'GET' && (path === '/catalog' || path === '/')) {
         send(res, 200, clientCatalog(hub.catalog(query(url))))
         return
@@ -145,6 +162,31 @@ export function handleSkillHubHttp(
         return
       }
       const body = await readJson(req)
+      if (path === '/mcp/managed/create' || path === '/mcp/managed/update') {
+        if (!managedMcp) { send(res, 503, { error: 'Managed MCP unavailable' }); return }
+        const input = body as unknown as ManagedServerInput
+        const result = path === '/mcp/managed/create'
+          ? await managedMcp.create(input)
+          : typeof body['name'] !== 'string' || body['name'] === ''
+            ? (() => { throw new Error('invalid MCP server: name is required') })()
+            : await managedMcp.update(body['name'], input)
+        send(res, 200, result)
+        return
+      }
+      if (path === '/mcp/managed/delete' || path === '/mcp/managed/enable' || path === '/mcp/managed/restart') {
+        if (!managedMcp) { send(res, 503, { error: 'Managed MCP unavailable' }); return }
+        if (typeof body['name'] !== 'string' || body['name'] === '') throw new Error('invalid MCP server: name is required')
+        const revision = typeof body['expectedRevision'] === 'number' ? body['expectedRevision'] : undefined
+        const result = path === '/mcp/managed/delete'
+          ? await managedMcp.remove(body['name'], revision)
+          : path === '/mcp/managed/enable'
+            ? typeof body['enabled'] === 'boolean'
+              ? await managedMcp.setEnabled(body['name'], body['enabled'], revision)
+              : (() => { throw new Error('invalid MCP server: enabled must be boolean') })()
+            : await managedMcp.restart(body['name'])
+        send(res, 200, result)
+        return
+      }
       if (path === '/mcp/toggle' || path === '/mcp/inherit') {
         if (!mcp) throw new Error('MCP visibility unavailable')
         const layer = body['layer']
@@ -227,6 +269,23 @@ export function handleSkillHubHttp(
         send(res, 200, clientCatalog(hub.displayedCatalog('session', folder, body['sessionId'])))
         return
       }
+      if (path === '/skill/create') {
+        if (body['home'] !== 'agent' && body['home'] !== 'dsh') {
+          send(res, 400, { error: 'home must be agent or dsh' })
+          return
+        }
+        const input = readCreateSkillInput({
+          name: body['name'],
+          description: body['description'],
+          whenToUse: body['whenToUse'],
+          body: body['body'],
+        })
+        const homeRoot = body['home'] === 'agent' ? hub.paths.agentHome : hub.paths.dshHome
+        createSkill(homeRoot, input)
+        invalidate()
+        send(res, 200, clientCatalog(hub.catalog(query(url))))
+        return
+      }
       if (path === '/install') {
         if (typeof body['sourceDir'] !== 'string' || (body['home'] !== 'agent' && body['home'] !== 'dsh')) {
           send(res, 400, { error: 'sourceDir and home required' })
@@ -244,7 +303,7 @@ export function handleSkillHubHttp(
       // readDoc/writeDoc paths — is an internal failure and answers 500.
       const message = String(error)
       const client = !/visibility document/i.test(message)
-        && /required|invalid|must be|not registered|no longer registered|not declared|Cannot fully hide|Cannot start|Cannot reload/i.test(message)
+        && /required|invalid|must be|does not contain|already exists|does not exist|not registered|no longer registered|not declared|MCP manager|credential provider|configuration changed|Cannot fully hide|Cannot start|Cannot reload/i.test(message)
       send(res, client ? 400 : 500, { error: message })
     }
   }

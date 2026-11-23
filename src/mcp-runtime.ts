@@ -1,5 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
-import { McpHub, attributeMcpTool, computeDenyList, type McpCatalogQuery, type McpServerView, type McpVariantView } from './mcp.ts'
+import { McpHub, attributeMcpTool, computeDenyList, type McpCatalogQuery, type McpManagedView, type McpServerView, type McpVariantView } from './mcp.ts'
 import {
   DEFAULT_PROJECT_MCP_FILES, approveMcpServer, isApproved, mcpClientConfig, readMcpTrust, readProjectMcp,
   type ProjectMcpRead, type ProjectMcpTrust, type ProjectMcpVariant,
@@ -39,6 +39,12 @@ export interface ProjectMcpOptions {
    * anything: an untrusted command still waits for the user.
    */
   readonly autoStart?: boolean
+  /**
+   * SkillHub-managed servers. Their definitions live outside a project, but the
+   * panel still routes them through the same visibility document and shows
+   * their run state next to declared servers.
+   */
+  readonly managed?: () => readonly McpManagedView[]
 }
 
 const EMPTY_READ: ProjectMcpRead = { servers: [], problems: [] }
@@ -464,8 +470,38 @@ export function installMcpVisibility(
         problems: problemsFor(entry.name, entry),
       })
     }
-    views.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
-    return { ...result, servers: views, declaredProblems: declared.problems }
+    // Managed rows share the same list and visibility document as live and
+    // declared servers. A disabled definition has no live fiber, so it is shown
+    // Off and unswitchable, exactly like a declaration that was never started.
+    const managedRows = project?.managed?.() ?? []
+    const managedByName = new Map(managedRows.map(row => [row.name, row]))
+    const merged = views.map((view): McpServerView => {
+      const info = managedByName.get(view.name)
+      if (info === undefined) return view
+      managedByName.delete(view.name)
+      return { ...view, managedBy: 'skillhub', managedInfo: info, editable: true }
+    })
+    for (const info of managedByName.values()) {
+      const state = hub.effectiveGate(info.name, query.sessionId, folder)
+      const serving = info.enabled && info.status === 'connected'
+      merged.push({
+        name: info.name,
+        tools: info.tools ?? 0,
+        gate: serving ? state.gate : 'off',
+        source: state.source,
+        running: serving,
+        declared: false,
+        managed: false,
+        managedBy: 'skillhub',
+        managedInfo: info,
+        editable: true,
+        startRequired: !serving,
+        supported: true,
+        problems: info.statusDetail === undefined ? [] : [info.statusDetail],
+      })
+    }
+    merged.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
+    return { ...result, servers: merged, declaredProblems: declared.problems }
   }
   return {
     attach,

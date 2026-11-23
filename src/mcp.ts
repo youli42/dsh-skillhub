@@ -60,6 +60,23 @@ export interface McpServerView {
   readonly variants?: readonly McpVariantView[]
   /** Aggregated declaration problems, already human-readable. */
   readonly problems?: readonly string[]
+  /** This row is one of SkillHub's own managed servers. */
+  readonly managedBy?: 'skillhub'
+  /** Live facts for a managed server, also when its definition is disabled. */
+  readonly managedInfo?: McpManagedView
+  /** The settings page may edit or delete this row. */
+  readonly editable?: boolean
+}
+
+/** One SkillHub-managed server as the catalog needs it. */
+export interface McpManagedView {
+  readonly name: string
+  readonly enabled: boolean
+  readonly transport: string
+  readonly status: string
+  readonly statusDetail?: string
+  readonly tools?: number
+  readonly revision: number
 }
 
 export interface McpCatalogQuery {

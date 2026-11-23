@@ -7,6 +7,7 @@ import type { SkillProviderControl } from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
 import { McpHub } from './mcp.ts'
 import { installMcpVisibility } from './mcp-runtime.ts'
+import { attachManagedMcp, ManagedMcpRuntime } from './managed-mcp-runtime.ts'
 import { DEFAULT_PROJECT_MCP_FILES } from './project-mcp.ts'
 import { DEFAULT_PROJECT_SKILL_ROOTS } from './project-roots.ts'
 import { SkillHub } from './hub.ts'
@@ -83,6 +84,9 @@ export function apply(ctx: Context, config: Config) {
     control = next
     return createSkillHubProvider(hub)
   })
+  const managedMcp = new ManagedMcpRuntime(defaultStoreDir())
+  const detachManagedMcp = attachManagedMcp(ctx, managedMcp)
+  ctx.effect(() => () => { detachManagedMcp(); managedMcp.detach() }, 'dsh-skillhub managed MCP')
   const mcp = installMcpVisibility(
     ctx,
     new McpHub({ storeDir: defaultStoreDir() }),
@@ -91,6 +95,7 @@ export function apply(ctx: Context, config: Config) {
       storeDir: defaultStoreDir(),
       files: config.projectMcpFiles,
       autoStart: config.autoStartTrustedMcp,
+      managed: () => managedMcp.catalogRows(),
     },
   )
   const invalidate = () => { control?.invalidate() }
@@ -102,6 +107,7 @@ export function apply(ctx: Context, config: Config) {
     invalidate,
     request => connection === undefined ? 401 : connection.requestRejection(request),
     mcp,
+    managedMcp,
   )
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
