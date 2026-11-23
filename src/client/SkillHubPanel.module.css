@@ -686,3 +686,162 @@
     transform: none;
   }
 }
+
+
+/* Add / edit dialogs ------------------------------------------------------ */
+
+.dialogBody {
+  display: flex;
+  max-height: min(64vh, 560px);
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  padding: 4px 2px;
+}
+
+.formGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.fieldHint {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  outline: none;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+  font-size: 13px;
+  line-height: 20px;
+  resize: vertical;
+}
+
+.textarea:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+
+.textarea:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.secretRow {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(130px, 1.4fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.secretKey,
+.secretValue {
+  min-width: 0;
+}
+
+.secretActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deleteText {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* Activity records -------------------------------------------------------- */
+
+.recordList {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+}
+
+.recordRow {
+  display: grid;
+  grid-template-columns: auto minmax(92px, auto) auto 1fr;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.recordTime {
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.recordAction {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+}
+
+.recordDetail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A managed row is still a normal tree row; the tag carries the provenance. */
+.row[data-managed] .cell {
+  min-width: 0;
+}
+
+@media (max-width: 520px) {
+  .secretRow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .secretActions {
+    grid-column: 1 / -1;
+  }
+
+  .recordRow {
+    grid-template-columns: auto 1fr;
+  }
+}

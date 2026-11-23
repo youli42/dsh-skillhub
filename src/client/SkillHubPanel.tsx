@@ -1,4 +1,5 @@
 import { McpPanel, type McpBulkActions } from './McpPanel.tsx'
+import { SkillAddDialog } from './SkillAddDialog.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   Button, IconChevronRightOutlineRegular, IconCordisPluginOutlineRegular, IconEllipsisOutlineRegular,
@@ -202,6 +203,8 @@ export function SkillHubPanel(props: {
   const [mcpServerCount, setMcpServerCount] = useState<number>()
   const [mcpBulk, setMcpBulk] = useState<McpBulkActions>()
   const [moreOpen, setMoreOpen] = useState(false)
+  const [addSkillOpen, setAddSkillOpen] = useState(false)
+  const [mcpAddSignal, setMcpAddSignal] = useState(0)
   const pending = useRef(false)
   const generation = useRef(0)
   const inFlight = useRef(0)
@@ -310,6 +313,12 @@ export function SkillHubPanel(props: {
             disabled={busy || (name === 'session' && !canWriteSession) || (name === 'project' && !canWriteProject)}
             onClick={() => setLayer(name)}>{layerLabel(t, name)}</button>)}
         </div> : null}
+        {props.surface === 'page' ? <Button variant="outline" size="sm"
+          disabled={busy || (tab === 'skills' && !layerReady)}
+          onClick={() => {
+            if (tab === 'mcp') setMcpAddSignal(value => value + 1)
+            else setAddSkillOpen(true)
+          }}>{t(tab === 'mcp' ? 'mcp.add' : 'skill.add.button')}</Button> : null}
         <Menu open={moreOpen} onClose={() => setMoreOpen(false)} onSelect={onMoreSelect} items={moreItems} align="end" compact portal
           anchor={<Button variant="ghost" size="sm" icon={<IconEllipsisOutlineRegular size={16} />} aria-label={t('more')} title={t('more')}
             onClick={() => setMoreOpen(value => !value)} />} />
@@ -317,7 +326,7 @@ export function SkillHubPanel(props: {
     </div>
     {tab === 'mcp' ? <McpPanel surface={props.surface} layer={layer} sessionId={sessionId} folder={folder}
       canWriteSession={canWriteSession} canWriteProject={canWriteProject} layerReady={layerReady}
-      onServerCountChange={setMcpServerCount} onBulkActions={setMcpBulk} t={t} /> : <>
+      addSignal={mcpAddSignal} onServerCountChange={setMcpServerCount} onBulkActions={setMcpBulk} t={t} /> : <>
       <label className={css.search}><Input className={css.field ?? ''} icon={<IconSearchOutlineRegular size={16} />}
         value={query} placeholder={t('search.placeholder')} aria-label={t('search.placeholder')}
         onChange={event => setQuery(event.currentTarget.value)} /></label>
@@ -378,6 +387,21 @@ export function SkillHubPanel(props: {
       </div>
       {notice ? <Toast key={notice.seq} text={t(notice.key)} onDone={() => setNotice(current => current?.seq === notice.seq ? undefined : current)} /> : null}
     </>}
+    <SkillAddDialog
+      open={addSkillOpen}
+      t={t}
+      onClose={() => setAddSkillOpen(false)}
+      onSaved={next => {
+        setCatalog(next)
+        setAddSkillOpen(false)
+        notifyCatalogChanged(layer)
+        noticeSeq.current += 1
+        setNotice({ key: 'refresh.done', seq: noticeSeq.current })
+        void refreshSkillAutocomplete().catch(caught => {
+          console.warn('[skillhub] Skill added but autocomplete refresh failed:', caught)
+        })
+      }}
+    />
   </div>
 }
 function TreeNode(props: {

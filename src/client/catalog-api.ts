@@ -138,6 +138,86 @@ export async function fetchCatalog(
   return await readJson(response) as CatalogPayload
 }
 
+/** One secret field as the panel sees it: presence and a masked preview only. */
+export type ManagedSecret = {
+  key: string
+  ref: string
+  configured: boolean
+  writable: boolean
+  masked?: string
+  source?: string
+}
+
+export type ManagedStatus = {
+  state: 'connected' | 'connecting' | 'reconnecting' | 'waiting-credentials' | 'failed' | 'closed' | 'disabled' | 'unavailable'
+  tools?: number
+  connectedAt?: number
+  attempt?: number
+  maxAttempts?: number
+  nextRetryAtMs?: number
+  reason?: string
+  error?: string
+}
+
+export type ManagedServer = {
+  name: string
+  transport: 'stdio' | 'streamable-http'
+  command: string
+  args: string[]
+  cwd: string
+  url: string
+  env: ManagedSecret[]
+  headers: ManagedSecret[]
+  enabled: boolean
+  revision: number
+  createdAt: string
+  updatedAt: string
+  status: ManagedStatus
+}
+
+export type ManagedPayload = {
+  available: boolean
+  revision: number
+  servers: ManagedServer[]
+  error?: string
+}
+
+export type ManagedAuditEntry = {
+  at: string
+  action: string
+  server?: string
+  transport?: string
+  command?: string
+  argCount?: number
+  urlHost?: string
+  fields?: string[]
+  secretRefs?: string[]
+  result: 'ok' | 'error'
+  error?: string
+}
+
+export async function fetchManaged(): Promise<ManagedPayload> {
+  const response = await fetch(`${BASE}/mcp/managed`)
+  return await readJson(response) as ManagedPayload
+}
+
+export async function postManaged(action: string, body: Record<string, unknown>): Promise<ManagedPayload> {
+  const response = await fetch(`${BASE}/mcp/managed/${action}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return await readJson(response) as ManagedPayload
+}
+
+export async function fetchManagedAudit(server?: string, limit = 50): Promise<ManagedAuditEntry[]> {
+  const query = new URLSearchParams({ limit: String(limit) })
+  if (server !== undefined && server !== '') query.set('server', server)
+  const response = await fetch(`${BASE}/mcp/managed/audit?${query.toString()}`)
+  const payload = await readJson(response) as { entries?: ManagedAuditEntry[] }
+  return Array.isArray(payload.entries) ? payload.entries : []
+}
+
 export async function postCatalog(path: string, body: Record<string, unknown>): Promise<CatalogPayload> {
   const response = await fetch(`${BASE}${path}`, {
     method: 'POST',
