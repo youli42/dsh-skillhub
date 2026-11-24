@@ -33,7 +33,8 @@ export function ManagedMcpRecords(props: {
     setEntries(undefined)
     setError(undefined)
     void fetchManagedAudit(server)
-      .then(rows => { if (!cancelled) setEntries(rows) })
+      // 后端按时间正序返回，这里倒过来：最新的操作排在最上面。
+      .then(rows => { if (!cancelled) setEntries([...rows].reverse()) })
       .catch((caught: unknown) => { if (!cancelled) setError(String(caught)) })
     return () => { cancelled = true }
   }, [props.open, server])
